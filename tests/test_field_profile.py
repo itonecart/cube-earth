@@ -1,15 +1,23 @@
 import asyncio
 
+from backend.bootstrap import (
+    Bootstrap
+)
 
-async def run_test(
 
-    service
+async def run():
 
-):
+    system = (
+
+        Bootstrap()
+
+        .build()
+
+    )
 
     result = await (
 
-        service.build_profile(
+        system.build_profile(
 
             52.10,
 
@@ -28,10 +36,10 @@ async def run_test(
     )
 
 
-def test():
+if __name__ == "__main__":
 
-    print(
+    asyncio.run(
 
-        "Cube Earth integration foundation"
+        run()
 
     )
