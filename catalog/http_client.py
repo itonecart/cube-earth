@@ -1,90 +1,42 @@
-import aiohttp
+import httpx
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 
 class HttpClient:
 
-    def __init__(
-
-        self,
-
-        timeout=60
-
-    ):
-
+    def __init__(self, timeout=30):
         self.timeout = timeout
+        self._client = None
 
-    async def get(
+    async def __aenter__(self):
+        self._client = httpx.AsyncClient(timeout=self.timeout)
+        return self
 
-        self,
+    async def __aexit__(self, *args):
+        await self._client.aclose()
 
-        url,
-
-        headers=None,
-
-        params=None
-
-    ):
-
-        timeout = aiohttp.ClientTimeout(
-
-            total=self.timeout
-
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+    )
+    async def get(self, url, headers=None, params=None):
+        r = await self._client.get(
+            url,
+            headers=headers or {},
+            params=params or {},
         )
+        r.raise_for_status()
+        return r.json()
 
-        async with aiohttp.ClientSession(
-
-            timeout=timeout
-
-        ) as session:
-
-            async with session.get(
-
-                url,
-
-                headers=headers,
-
-                params=params
-
-            ) as response:
-
-                response.raise_for_status()
-
-                return await response.json()
-
-    async def post(
-
-        self,
-
-        url,
-
-        payload=None,
-
-        headers=None
-
-    ):
-
-        timeout = aiohttp.ClientTimeout(
-
-            total=self.timeout
-
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+    )
+    async def get_bytes(self, url, headers=None, params=None):
+        r = await self._client.get(
+            url,
+            headers=headers or {},
+            params=params or {},
         )
-
-        async with aiohttp.ClientSession(
-
-            timeout=timeout
-
-        ) as session:
-
-            async with session.post(
-
-                url,
-
-                headers=headers,
-
-                json=payload
-
-            ) as response:
-
-                response.raise_for_status()
-
-                return await response.json()
+        r.raise_for_status()
+        return r.content

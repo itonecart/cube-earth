@@ -1,23 +1,30 @@
-# Settings foundation
+import os
+from dotenv import load_dotenv
 
-import json
-
+load_dotenv()
 
 class Settings:
 
-    def __init__(self):
+    # NASA Earthdata
+    NASA_TOKEN = os.getenv("NASA_EARTHDATA_TOKEN")
 
-        with open(
-            "config/sensor_catalog.json"
-        ) as f:
+    # Supabase
+    SUPABASE_URL = os.getenv("SUPABASE_URL")
+    SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
-            self.catalog = json.load(f)
+    # Ireland bounding box
+    IRELAND_BBOX = (-10.5, 51.3, -6.0, 55.4)
 
-    def sensor(
-        self,
-        name
-    ):
+    # Sensors
+    SMAP_COLLECTION      = "C2208420167-POCLOUD"
+    ECOSTRESS_COLLECTION = "C2076090826-LPCLOUD"
+    HLS_S30_COLLECTION   = "C2021957295-LPCLOUD"
+    PALSAR2_COLLECTION   = "C2777443834-ASF"
+    NASADEM_COLLECTION   = "C2036882064-LPCLOUD"
 
-        return self.catalog.get(
-            name
-        )
+    # Cache TTL seconds
+    SMAP_TTL      = 43200   # 12 hours
+    ECOSTRESS_TTL = 604800  # 7 days
+    WEATHER_TTL   = 7200    # 2 hours
+
+settings = Settings()
