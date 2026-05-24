@@ -1,6 +1,7 @@
 # Earthdata catalog client
 
 from catalog.auth import EarthdataAuth
+from catalog.http_client import HttpClient
 
 
 class EarthdataClient:
@@ -11,6 +12,12 @@ class EarthdataClient:
     ):
 
         self.auth = auth
+
+        self.http = HttpClient()
+
+        self.base = (
+            "https://cmr.earthdata.nasa.gov"
+        )
 
     async def collections(
         self,
