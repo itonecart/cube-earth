@@ -24,7 +24,23 @@ class EarthdataClient:
         keyword=None
     ):
 
-        raise NotImplementedError
+        url = (
+            f"{self.base}"
+            "/search/collections.json"
+        )
+
+        params = {}
+
+        if keyword:
+
+            params[
+                "keyword"
+            ] = keyword
+
+        return await self.http.get(
+            url,
+            params=params
+        )
 
     async def granules(
         self,
