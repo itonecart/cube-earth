@@ -1,19 +1,13 @@
-import asyncio
-
 from backend.bootstrap import (
     Bootstrap
 )
 
+import asyncio
 
-async def run():
 
-    system = (
+async def run_test():
 
-        Bootstrap()
-
-        .build()
-
-    )
+    system = Bootstrap().build()
 
     result = await (
 
@@ -29,17 +23,19 @@ async def run():
 
     )
 
-    print(
-
-        result
-
-    )
+    print(result)
 
 
 if __name__ == "__main__":
 
-    asyncio.run(
+    loop = (
 
-        run()
+        asyncio.get_event_loop()
+
+    )
+
+    loop.run_until_complete(
+
+        run_test()
 
     )
