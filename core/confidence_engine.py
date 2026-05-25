@@ -183,12 +183,22 @@ def parcel_confidence(area_ha, crop):
             "literature": "TaLAM 2018: Minimum mapping unit 0.5ha for satellite reliability"}
 
 
-def cross_sensor_agreement(ndvi, smap_surf, era5_surf, s1_granules):
+def cross_sensor_agreement(ndvi, smap_surf, era5_surf, s1_granules, rvi=None, vv_db=None, vh_db=None,
+                           s2_age=None, ecostress_available=False):
     # Start at 8.0 — sensors measure different things by design
-    # 10/10 reserved for strong active consistency evidence
+    # 10/10 reserved for all sensors fresh, all consistent
     score = 8.0
     flags = []
     agreements = []
+
+    # Structural penalties — missing or stale sensors reduce max agreement
+    if not ecostress_available:
+        score -= 0.3
+        flags.append("ECOSTRESS unavailable — thermal dimension absent from agreement")
+    if s2_age is not None and s2_age > 20:
+        penalty = round(min((s2_age - 20) / 50, 0.4), 2)
+        score -= penalty
+        flags.append(f"Optical data {s2_age} days old — vegetation state may have changed")
 
     # SMAP vs ERA5 moisture
     if smap_surf is not None and era5_surf is not None:
@@ -216,7 +226,10 @@ def cross_sensor_agreement(ndvi, smap_surf, era5_surf, s1_granules):
             flags.append("Low vegetation but high moisture — possible waterlogging or recent cut")
         else:
             score += 0.5  # active evidence
-            agreements.append(f"NDVI {ndvi:.2f} consistent with soil moisture {smap_surf:.3f}")
+            agreements.append(
+                    f"Optical signal (NDVI {ndvi:.2f}) and soil moisture "
+                    f"({smap_surf:.3f} m3/m3) consistent with current vegetation condition"
+                )
     else:
         score -= 0.5
         flags.append("Cannot cross-check NDVI vs moisture — data missing")
@@ -227,12 +240,19 @@ def cross_sensor_agreement(ndvi, smap_surf, era5_surf, s1_granules):
         flags.append("No SAR granules found — optical-only assessment")
     else:
         # Granules confirmed but VV/VH backscatter not extracted
-        # Cannot claim structural signal until pixel values computed
-        agreements.append(
-            f"SAR granules available ({s1_granules}) — "
-            f"VV/VH not extracted, structural signal unconfirmed"
-        )
-        # No score bonus until actual backscatter contributes to fusion
+        # SAR backscatter via CDSE — use actual values
+        if rvi is not None and vv_db is not None and vh_db is not None:
+            score += 0.5
+            agreements.append(
+                f"SAR VV/VH extracted — VV {vv_db:.1f}dB  VH {vh_db:.1f}dB  RVI {rvi:.2f}"
+            )
+            if ndvi is not None and abs(rvi - ndvi) < 0.20:
+                score += 0.5
+                agreements.append(
+                    f"SAR RVI {rvi:.2f} and optical NDVI {ndvi:.2f} — both independently support moderate vegetation condition"
+                )
+        else:
+            agreements.append(f"SAR granules available ({s1_granules}) — backscatter pending")
 
     score = min(10, max(0, score))
     level = "high" if score >= 8 else "moderate" if score >= 5 else "low"
@@ -242,7 +262,8 @@ def cross_sensor_agreement(ndvi, smap_surf, era5_surf, s1_granules):
             "agreements": agreements, "flags": flags, "note": note}
 
 
-def freshness_summary(s2_date, smap_date, s1_date, eco_date):
+def freshness_summary(s2_date, smap_date, s1_date, eco_date,
+                      sar_latest=None, sar_acquisitions=None):
     def entry(name, date, resolution):
         age = _age_days(date)
         return {"sensor": name,
@@ -253,10 +274,28 @@ def freshness_summary(s2_date, smap_date, s1_date, eco_date):
                               else "recent" if age is not None and age <= 14
                               else "moderate" if age is not None and age <= 30
                               else "stale" if age is not None else "no_data")}
+
+    sar_age = _age_days(sar_latest)
+    sar_entry = {
+        "sensor":       "Sentinel-1 SAR",
+        "date":         str(sar_latest)[:10] if sar_latest else None,
+        "age_days":     sar_age,
+        "age_label":    _age_label(sar_age),
+        "resolution":   "20m",
+        "acquisitions": sar_acquisitions,
+        "freshness":    ("current" if sar_age is not None and sar_age <= 3
+                         else "recent" if sar_age is not None and sar_age <= 14
+                         else "moderate" if sar_age is not None and sar_age <= 30
+                         else "stale" if sar_age is not None else "no_data"),
+        "note": (f"{sar_acquisitions} acquisitions averaged — "
+                 "temporal speckle reduction applied"
+                 if sar_acquisitions else "no SAR data"),
+    }
+
     return {
         "sentinel2":  entry("Sentinel-2", s2_date, "30m"),
         "smap":       entry("SMAP L4",    smap_date, "9km"),
-        "sentinel1":  entry("Sentinel-1", s1_date, "20m"),
+        "sentinel1":  sar_entry,
         "ecostress":  entry("ECOSTRESS",  eco_date, "70m"),
         "era5":       {"sensor": "ERA5-Land", "age_label": "seasonal context",
                        "resolution": "9km", "freshness": "seasonal_context",
@@ -336,21 +375,93 @@ def explainability(grazing, traffic, slurry, drought, waterlog,
 def overall_confidence(s2c, smapc, era5c, s1c, ecoc, parcelc, agreement):
     weights = {"s2": 0.28, "smap": 0.22, "era5": 0.13, "s1": 0.10,
                "eco": 0.08, "parcel": 0.10, "agreement": 0.09}
-    scores  = {"s2": s2c["score"], "smap": smapc["score"], "era5": era5c["score"],
-               "s1": s1c["score"],
-               "eco": ecoc["score"] if ecoc["level"] != "unavailable" else 5,
-               "parcel": parcelc["score"], "agreement": agreement["score"]}
+
+    # Fix 2: age-weighted S2 score — penalise stale optical data
+    s2_age = s2c.get("age_days") or 0
+    s2_score = s2c["score"]
+    if s2_age > 20:
+        s2_score = max(s2_score - round((s2_age - 20) / 10, 1), 0)
+
+    # Fix 3: ECOSTRESS contributes 0 if unavailable — not 5
+    eco_score = 0 if ecoc["level"] == "unavailable" else ecoc["score"]
+
+    scores = {
+        "s2":        s2_score,
+        "smap":      smapc["score"],
+        "era5":      era5c["score"],
+        "s1":        s1c["score"],
+        "eco":       eco_score,
+        "parcel":    parcelc["score"],
+        "agreement": agreement["score"],
+    }
+
     weighted = sum(scores[k] * weights[k] for k in weights)
-    level = "high" if weighted >= 7.5 else "moderate" if weighted >= 5.0 else "low"
+    if weighted >= 8.5:
+        level = "high"
+    elif weighted >= 6.5:
+        level = "moderate-high"
+    elif weighted >= 4.5:
+        level = "moderate"
+    else:
+        level = "low"
+
     limiting = [k for k, v in {"Sentinel-2": s2c, "SMAP": smapc, "ERA5": era5c,
                                 "Sentinel-1": s1c, "ECOSTRESS": ecoc,
                                 "Parcel": parcelc}.items()
                 if v["level"] in ("low", "unavailable")]
-    explanation = (f"{level.capitalize()} confidence"
+    level_label = level.replace("-", " ").capitalize()
+    explanation = (f"{level_label} confidence"
                    + (f" — limiting: {', '.join(limiting)}" if limiting
                       else " — all sensors reliable"))
-    return {"score": round(weighted,1), "level": level, "explanation": explanation,
+
+    # Fix 4: contributions as percentages
+    raw_contribs = {k: scores[k] * weights[k] for k in weights}
+    total = sum(raw_contribs.values()) or 1
+    contributions = {
+        "Sentinel-2": {
+            "score": round(s2_score, 1),
+            "weighted": round(raw_contribs["s2"], 2),
+            "percent": round(raw_contribs["s2"] / total * 100, 1),
+            "age_days": s2c.get("age_days"),
+        },
+        "SMAP": {
+            "score": round(scores["smap"], 1),
+            "weighted": round(raw_contribs["smap"], 2),
+            "percent": round(raw_contribs["smap"] / total * 100, 1),
+            "age_days": smapc.get("age_days"),
+        },
+        "ERA5": {
+            "score": round(scores["era5"], 1),
+            "weighted": round(raw_contribs["era5"], 2),
+            "percent": round(raw_contribs["era5"] / total * 100, 1),
+        },
+        "Sentinel-1": {
+            "score": round(scores["s1"], 1),
+            "weighted": round(raw_contribs["s1"], 2),
+            "percent": round(raw_contribs["s1"] / total * 100, 1),
+            "age_days": s1c.get("age_days"),
+        },
+        "ECOSTRESS": {
+            "score": round(eco_score, 1),
+            "weighted": round(raw_contribs["eco"], 2),
+            "percent": round(raw_contribs["eco"] / total * 100, 1),
+            "note": "unavailable" if ecoc["level"] == "unavailable" else None,
+        },
+        "Parcel": {
+            "score": round(scores["parcel"], 1),
+            "weighted": round(raw_contribs["parcel"], 2),
+            "percent": round(raw_contribs["parcel"] / total * 100, 1),
+        },
+        "Agreement": {
+            "score": round(scores["agreement"], 1),
+            "weighted": round(raw_contribs["agreement"], 2),
+            "percent": round(raw_contribs["agreement"] / total * 100, 1),
+        },
+    }
+
+    return {"score": round(weighted, 1), "level": level, "explanation": explanation,
             "weights": weights, "sensor_scores": scores,
+            "contributions": contributions,
             "breakdown": {"sentinel2": s2c, "smap": smapc, "era5": era5c,
                           "sentinel1": s1c, "ecostress": ecoc,
                           "parcel": parcelc, "agreement": agreement}}
