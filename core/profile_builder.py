@@ -13,6 +13,11 @@ from parcel.geometry import parcel_size_class, confidence_penalty
 from analytics.soil_moisture import classify_surface, classify_rootzone, classify_drainage, n_mineralisation_risk
 from analytics.drought import drought_stress_index, waterlogging_probability
 from analytics.grazing import grazing_suitability, machinery_trafficability, slurry_suitability
+from core.confidence_engine import (
+    s2_confidence, smap_confidence, era5_confidence,
+    s1_confidence, ecostress_confidence, parcel_confidence,
+    overall_confidence,
+)
 
 
 def interpret_ndvi(v):
@@ -114,6 +119,20 @@ class ProfileBuilder:
         traffic  = machinery_trafficability(surf_use, root_use, slope)
         slurry   = slurry_suitability(surf_use, slope, traffic["score"])
 
+        # Confidence engine
+        s2c     = s2_confidence(ndvi, indices.get("ndre") if indices else None,
+                      best.get("cloud_cover") if best else 100,
+                      best.get("time_start") if best else None)
+        smapc   = smap_confidence(smap_surf, smap_root,
+                      smap_result.get("granule_date") if smap_result.get("available") else None)
+        era5c   = era5_confidence(surf, era5.get("obs_count"))
+        s1c     = s1_confidence(s1_result.get("granule_count"))
+        ecoc    = ecostress_confidence(
+                      lst.get("celsius") if lst else None,
+                      lst.get("granule_time") if lst else None)
+        parcelc = parcel_confidence(area_ha, parcel.get("crop") if parcel else None)
+        conf    = overall_confidence(s2c, smapc, era5c, s1c, ecoc, parcelc)
+
         return {
             "location":  {"lat": lat, "lng": lng},
             "year":      year,
@@ -171,6 +190,7 @@ class ProfileBuilder:
                 "area_ha":            area_ha,
                 "confidence_penalty": penalty,
             },
+            "confidence": conf,
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
 
