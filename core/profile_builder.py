@@ -16,7 +16,8 @@ from analytics.grazing import grazing_suitability, machinery_trafficability, slu
 from core.confidence_engine import (
     s2_confidence, smap_confidence, era5_confidence,
     s1_confidence, ecostress_confidence, parcel_confidence,
-    overall_confidence,
+    cross_sensor_agreement, freshness_summary,
+    explainability, overall_confidence,
 )
 
 
@@ -120,18 +121,35 @@ class ProfileBuilder:
         slurry   = slurry_suitability(surf_use, slope, traffic["score"])
 
         # Confidence engine
-        s2c     = s2_confidence(ndvi, indices.get("ndre") if indices else None,
+        s2c     = s2_confidence(
+                      ndvi,
+                      indices.get("ndre") if indices else None,
                       best.get("cloud_cover") if best else 100,
                       best.get("time_start") if best else None)
-        smapc   = smap_confidence(smap_surf, smap_root,
+        smapc   = smap_confidence(
+                      smap_surf, smap_root,
                       smap_result.get("granule_date") if smap_result.get("available") else None)
         era5c   = era5_confidence(surf, era5.get("obs_count"))
-        s1c     = s1_confidence(s1_result.get("granule_count"))
+        s1c     = s1_confidence(
+                      s1_result.get("granule_count"),
+                      s1_result.get("latest", {}).get("time_start") if s1_result.get("latest") else None)
         ecoc    = ecostress_confidence(
                       lst.get("celsius") if lst else None,
                       lst.get("granule_time") if lst else None)
         parcelc = parcel_confidence(area_ha, parcel.get("crop") if parcel else None)
-        conf    = overall_confidence(s2c, smapc, era5c, s1c, ecoc, parcelc)
+        agree   = cross_sensor_agreement(ndvi, smap_surf, surf, s1_result.get("granule_count"))
+        fresh   = freshness_summary(
+                      best.get("time_start") if best else None,
+                      smap_result.get("granule_date") if smap_result.get("available") else None,
+                      s1_result.get("latest", {}).get("time_start") if s1_result.get("latest") else None,
+                      lst.get("granule_time") if lst else None)
+        explain = explainability(
+                      grazing, traffic, slurry, drought, waterlog,
+                      ndvi, gcap, surf_use, root_use, slope, drainage,
+                      s2_age=s2c.get("age_days"),
+                      smap_age=smapc.get("age_days"),
+                      era5_age=None)
+        conf    = overall_confidence(s2c, smapc, era5c, s1c, ecoc, parcelc, agree)
 
         return {
             "location":  {"lat": lat, "lng": lng},
@@ -190,7 +208,10 @@ class ProfileBuilder:
                 "area_ha":            area_ha,
                 "confidence_penalty": penalty,
             },
-            "confidence": conf,
+            "confidence":    conf,
+            "freshness":     fresh,
+            "agreement":     agree,
+            "explainability": explain,
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
 
