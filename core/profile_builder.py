@@ -7,6 +7,7 @@ from extractors.sentinel1_extractor import Sentinel1Extractor
 from extractors.smap_extractor import SMAPExtractor
 from extractors.ecostress_extractor import ECOSTRESSExtractor
 from parsers.hls_parser import compute_indices
+from parsers.sar_parser import extract_s1_backscatter
 from parsers.ecostress_parser import extract_lst
 from parcel.lpis import LPISClient
 from parcel.geometry import parcel_size_class, confidence_penalty
@@ -86,6 +87,7 @@ class ProfileBuilder:
         # Run pixel extractions in parallel
         best = hls_result.get("latest")
         eco_raw = await self.ecostress.extract(lat, lng, start, end)
+        sar_result  = await extract_s1_backscatter(lat, lng, start, end)
         eco_result = self.ecostress.parse(eco_raw)
 
         indices = None
@@ -132,7 +134,8 @@ class ProfileBuilder:
         era5c   = era5_confidence(surf, era5.get("obs_count"))
         s1c     = s1_confidence(
                       s1_result.get("granule_count"),
-                      s1_result.get("latest", {}).get("time_start") if s1_result.get("latest") else None)
+                      s1_result.get("latest", {}).get("time_start") if s1_result.get("latest") else None,
+                      sar_extracted=sar_result.get("available") if sar_result else False)
         ecoc    = ecostress_confidence(
                       lst.get("celsius") if lst else None,
                       lst.get("granule_time") if lst else None)
@@ -174,10 +177,18 @@ class ProfileBuilder:
                 "source": "ECOSTRESS",
             },
             "sar": {
-                "available":     s1_result.get("available"),
-                "granule_count": s1_result.get("granule_count"),
-                "latest_date":   s1_result.get("latest", {}).get("time_start") if s1_result.get("latest") else None,
-                "source":        s1_result.get("source"),
+                "available":        sar_result.get("available") if sar_result else False,
+                "vv_db":            sar_result.get("vv_db") if sar_result else None,
+                "vh_db":            sar_result.get("vh_db") if sar_result else None,
+                "rvi":              sar_result.get("rvi") if sar_result else None,
+                "rvi_interpretation": sar_result.get("rvi_interpretation") if sar_result else None,
+                "canopy_wetness":   sar_result.get("canopy_wetness") if sar_result else None,
+                "acquisitions":     sar_result.get("acquisitions") if sar_result else None,
+                "calibration":      sar_result.get("calibration") if sar_result else None,
+                "speckle_filter":   sar_result.get("speckle_filter") if sar_result else None,
+                "granule_count":    s1_result.get("granule_count"),
+                "source":           sar_result.get("source") if sar_result else s1_result.get("source"),
+                "note":             sar_result.get("note") if sar_result else None,
             },
             "soil_moisture": {
                 "smap": smap_result,

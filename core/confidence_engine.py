@@ -104,7 +104,7 @@ def era5_confidence(surface_mean, obs_count):
             "literature": "Green 2018: ERA5 used for seasonal moisture trend analysis"}
 
 
-def s1_confidence(granule_count, latest_date=None):
+def s1_confidence(granule_count, latest_date=None, sar_extracted=False):
     score = 7
     reasons = []
     if not granule_count or granule_count == 0:
@@ -123,6 +123,9 @@ def s1_confidence(granule_count, latest_date=None):
     reasons.append("Barrett 2014: C+L kappa=0.98 vs C alone kappa=0.87")
     reasons.append("Score capped until pixel extraction implemented")
     score = min(score, 6)  # cap until actual signal extracted
+    if sar_extracted:
+        score = min(score + 2, 8)  # reward actual extraction
+        reasons.insert(0, "VV/VH backscatter extracted via CDSE — signal confirmed")
     level = "high" if score >= 8 else "moderate" if score >= 5 else "low"
     return {"score": round(max(0,score),1), "level": level,
             "sensor": "Sentinel-1 C-band", "resolution": "20m",
