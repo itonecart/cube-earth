@@ -4,6 +4,7 @@ from extractors.era5_extractor import ERA5Extractor
 from extractors.nasadem_extractor import NASADEMExtractor
 from extractors.hls_extractor import HLSExtractor
 from extractors.sentinel1_extractor import Sentinel1Extractor
+from extractors.smap_extractor import SMAPExtractor
 from parsers.hls_parser import compute_indices
 from parcel.lpis import LPISClient
 from parcel.geometry import parcel_size_class, confidence_penalty
@@ -27,6 +28,24 @@ def interpret_gcap(v):
     if v > 0.30: return "Low-moderate sward"
     return "Weak sward"
 
+def fuse_moisture(smap_surf, era5_surf, smap_root, era5_root):
+    # SMAP is direct observation — higher weight
+    # ERA5 is model reanalysis — lower weight
+    def fuse(sat, model, sat_w=0.60, model_w=0.40):
+        if sat is None and model is None:
+            return None
+        if sat is None:
+            return model
+        if model is None:
+            return sat
+        return round(sat * sat_w + model * model_w, 4)
+    return {
+        "surface_fused":  fuse(smap_surf, era5_surf),
+        "rootzone_fused": fuse(smap_root, era5_root),
+        "method": "SMAP(60%) + ERA5(40%)",
+        "note": "SMAP direct observation weighted over ERA5 reanalysis",
+    }
+
 
 class ProfileBuilder:
 
@@ -35,6 +54,7 @@ class ProfileBuilder:
         self.nasadem   = NASADEMExtractor()
         self.hls       = HLSExtractor()
         self.sentinel1 = Sentinel1Extractor()
+        self.smap      = SMAPExtractor()
         self.lpis      = LPISClient()
 
     async def build(self, lat, lng, year):
@@ -48,14 +68,26 @@ class ProfileBuilder:
             self.lpis.get_commonage(lat, lng),
             self.hls.extract(lat, lng, start, end),
             self.sentinel1.extract(lat, lng, start, end),
+            self.smap.extract(lat, lng, start, end),
             return_exceptions=True,
         )
-        era5_raw, dem_raw, parcel, commonage, hls_raw, s1_raw = results
+        era5_raw, dem_raw, parcel, commonage, hls_raw, s1_raw, smap_raw = results
 
-        era5 = self.era5.parse(era5_raw if not isinstance(era5_raw, Exception) else None)
-        dem  = self.nasadem.parse(dem_raw if not isinstance(dem_raw, Exception) else None)
-        hls_result = self.hls.parse(hls_raw if not isinstance(hls_raw, Exception) else None)
-        s1_result  = self.sentinel1.parse(s1_raw if not isinstance(s1_raw, Exception) else None)
+        era5 = self.era5.parse(
+            era5_raw if not isinstance(era5_raw, Exception) else None
+        )
+        dem = self.nasadem.parse(
+            dem_raw if not isinstance(dem_raw, Exception) else None
+        )
+        hls_result = self.hls.parse(
+            hls_raw if not isinstance(hls_raw, Exception) else None
+        )
+        s1_result = self.sentinel1.parse(
+            s1_raw if not isinstance(s1_raw, Exception) else None
+        )
+        smap_result = self.smap.parse(
+            smap_raw if not isinstance(smap_raw, Exception) else None
+        )
 
         indices = None
         best = hls_result.get("latest")
@@ -72,15 +104,23 @@ class ProfileBuilder:
         size_class = parcel_size_class(area_ha)
         penalty    = confidence_penalty(size_class)
         ndvi = indices.get("ndvi") if indices else None
-        ndre = indices.get("ndre") if indices else None
         gcap = indices.get("gcap") if indices else None
 
-        drainage = classify_drainage(surf, slope)
-        drought  = drought_stress_index(surf, root)
-        waterlog = waterlogging_probability(surf, root, slope)
-        grazing  = grazing_suitability(surf, slope, waterlog["probability"], area_ha)
-        traffic  = machinery_trafficability(surf, root, slope)
-        slurry   = slurry_suitability(surf, slope, traffic["score"])
+        # Fuse SMAP + ERA5
+        smap_surf = smap_result.get("sm_surface_m3") if smap_result.get("available") else None
+        smap_root = smap_result.get("sm_rootzone_m3") if smap_result.get("available") else None
+        fusion = fuse_moisture(smap_surf, surf, smap_root, root)
+
+        # Use fused moisture for analytics
+        surf_use = fusion["surface_fused"] or surf
+        root_use = fusion["rootzone_fused"] or root
+
+        drainage = classify_drainage(surf_use, slope)
+        drought  = drought_stress_index(surf_use, root_use)
+        waterlog = waterlogging_probability(surf_use, root_use, slope)
+        grazing  = grazing_suitability(surf_use, slope, waterlog["probability"], area_ha)
+        traffic  = machinery_trafficability(surf_use, root_use, slope)
+        slurry   = slurry_suitability(surf_use, slope, traffic["score"])
 
         return {
             "location":  {"lat": lat, "lng": lng},
@@ -91,7 +131,7 @@ class ProfileBuilder:
             "vegetation": {
                 "available":    indices is not None,
                 "ndvi":         ndvi,
-                "ndre":         ndre,
+                "ndre":         indices.get("ndre") if indices else None,
                 "cire":         indices.get("cire") if indices else None,
                 "gcap":         gcap,
                 "ndvi_status":  interpret_ndvi(ndvi),
@@ -105,14 +145,21 @@ class ProfileBuilder:
                 "granule_count": s1_result.get("granule_count"),
                 "latest_date":   s1_result.get("latest", {}).get("time_start") if s1_result.get("latest") else None,
                 "source":        s1_result.get("source"),
-                "note":          s1_result.get("note"),
             },
             "soil_moisture": {
-                **era5,
-                "surface_status":   classify_surface(surf),
-                "rootzone_status":  classify_rootzone(root),
-                "drainage_class":   drainage,
-                "n_mineralisation": n_mineralisation_risk(surf),
+                "smap": smap_result,
+                "era5": {
+                    **era5,
+                    "surface_status":   classify_surface(surf),
+                    "rootzone_status":  classify_rootzone(root),
+                },
+                "fused": {
+                    **fusion,
+                    "surface_status":   classify_surface(surf_use),
+                    "rootzone_status":  classify_rootzone(root_use),
+                    "drainage_class":   drainage,
+                    "n_mineralisation": n_mineralisation_risk(surf_use),
+                },
             },
             "stress": {
                 "drought":      drought,
@@ -127,10 +174,6 @@ class ProfileBuilder:
                 "size_class":         size_class,
                 "area_ha":            area_ha,
                 "confidence_penalty": penalty,
-            },
-            "sensor_limitations": {
-                "palsar2":    "Not available for Ireland on NASA Earthdata",
-                "sentinel1":  "C-band only - Barrett 2014 C+L kappa=0.98 vs C alone=0.87",
             },
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
