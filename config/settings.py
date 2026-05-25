@@ -15,16 +15,16 @@ class Settings:
     # Ireland bounding box
     IRELAND_BBOX = (-10.5, 51.3, -6.0, 55.4)
 
-    # Sensors
+    # Sensor collections
     SMAP_COLLECTION      = "C2208420167-POCLOUD"
     ECOSTRESS_COLLECTION = "C2076090826-LPCLOUD"
     HLS_S30_COLLECTION   = "C2021957295-LPCLOUD"
-    PALSAR2_COLLECTION   = "C2777443834-ASF"
+    SENTINEL1_COLLECTION = "C1214470533-ASF"
     NASADEM_COLLECTION   = "C2036882064-LPCLOUD"
 
     # Cache TTL seconds
-    SMAP_TTL      = 43200   # 12 hours
-    ECOSTRESS_TTL = 604800  # 7 days
-    WEATHER_TTL   = 7200    # 2 hours
+    SMAP_TTL      = 43200
+    ECOSTRESS_TTL = 604800
+    WEATHER_TTL   = 7200
 
 settings = Settings()
