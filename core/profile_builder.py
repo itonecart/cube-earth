@@ -3,17 +3,13 @@ from datetime import datetime, timezone
 from extractors.era5_extractor import ERA5Extractor
 from extractors.nasadem_extractor import NASADEMExtractor
 from extractors.hls_extractor import HLSExtractor
+from extractors.sentinel1_extractor import Sentinel1Extractor
 from parsers.hls_parser import compute_indices
 from parcel.lpis import LPISClient
 from parcel.geometry import parcel_size_class, confidence_penalty
-from analytics.soil_moisture import (
-    classify_surface, classify_rootzone,
-    classify_drainage, n_mineralisation_risk
-)
+from analytics.soil_moisture import classify_surface, classify_rootzone, classify_drainage, n_mineralisation_risk
 from analytics.drought import drought_stress_index, waterlogging_probability
-from analytics.grazing import (
-    grazing_suitability, machinery_trafficability, slurry_suitability
-)
+from analytics.grazing import grazing_suitability, machinery_trafficability, slurry_suitability
 
 
 def interpret_ndvi(v):
@@ -35,40 +31,37 @@ def interpret_gcap(v):
 class ProfileBuilder:
 
     def __init__(self):
-        self.era5    = ERA5Extractor()
-        self.nasadem = NASADEMExtractor()
-        self.hls     = HLSExtractor()
-        self.lpis    = LPISClient()
+        self.era5      = ERA5Extractor()
+        self.nasadem   = NASADEMExtractor()
+        self.hls       = HLSExtractor()
+        self.sentinel1 = Sentinel1Extractor()
+        self.lpis      = LPISClient()
 
     async def build(self, lat, lng, year):
         start = f"{year}-04-01"
         end   = f"{year}-10-31"
 
-        era5_raw, dem_raw, parcel, commonage, hls_raw = await asyncio.gather(
+        results = await asyncio.gather(
             self.era5.extract(lat, lng, start, end),
             self.nasadem.extract(lat, lng),
             self.lpis.get_parcel(lat, lng),
             self.lpis.get_commonage(lat, lng),
             self.hls.extract(lat, lng, start, end),
+            self.sentinel1.extract(lat, lng, start, end),
             return_exceptions=True,
         )
+        era5_raw, dem_raw, parcel, commonage, hls_raw, s1_raw = results
 
-        era5 = self.era5.parse(
-            era5_raw if not isinstance(era5_raw, Exception) else None
-        )
-        dem = self.nasadem.parse(
-            dem_raw if not isinstance(dem_raw, Exception) else None
-        )
-        hls_result = self.hls.parse(
-            hls_raw if not isinstance(hls_raw, Exception) else None
-        )
+        era5 = self.era5.parse(era5_raw if not isinstance(era5_raw, Exception) else None)
+        dem  = self.nasadem.parse(dem_raw if not isinstance(dem_raw, Exception) else None)
+        hls_result = self.hls.parse(hls_raw if not isinstance(hls_raw, Exception) else None)
+        s1_result  = self.sentinel1.parse(s1_raw if not isinstance(s1_raw, Exception) else None)
 
-        # Get vegetation indices from best granule
         indices = None
-        best_granule = hls_result.get("latest")
-        if best_granule and hls_result.get("available"):
+        best = hls_result.get("latest")
+        if best and hls_result.get("available"):
             try:
-                indices = await compute_indices(best_granule, lat, lng)
+                indices = await compute_indices(best, lat, lng)
             except Exception:
                 indices = None
 
@@ -78,7 +71,6 @@ class ProfileBuilder:
         area_ha    = parcel.get("claim_area") if parcel else None
         size_class = parcel_size_class(area_ha)
         penalty    = confidence_penalty(size_class)
-
         ndvi = indices.get("ndvi") if indices else None
         ndre = indices.get("ndre") if indices else None
         gcap = indices.get("gcap") if indices else None
@@ -91,22 +83,29 @@ class ProfileBuilder:
         slurry   = slurry_suitability(surf, slope, traffic["score"])
 
         return {
-            "location": {"lat": lat, "lng": lng},
-            "year":     year,
-            "parcel":   parcel,
+            "location":  {"lat": lat, "lng": lng},
+            "year":      year,
+            "parcel":    parcel,
             "commonage": commonage,
-            "terrain":  dem,
+            "terrain":   dem,
             "vegetation": {
-                "available":   indices is not None,
-                "ndvi":        ndvi,
-                "ndre":        ndre,
-                "cire":        indices.get("cire") if indices else None,
-                "gcap":        gcap,
-                "ndvi_status": interpret_ndvi(ndvi),
-                "gcap_status": interpret_gcap(gcap),
-                "granule_date": best_granule.get("time_start") if best_granule else None,
-                "cloud_cover":  best_granule.get("cloud_cover") if best_granule else None,
+                "available":    indices is not None,
+                "ndvi":         ndvi,
+                "ndre":         ndre,
+                "cire":         indices.get("cire") if indices else None,
+                "gcap":         gcap,
+                "ndvi_status":  interpret_ndvi(ndvi),
+                "gcap_status":  interpret_gcap(gcap),
+                "granule_date": best.get("time_start") if best else None,
+                "cloud_cover":  best.get("cloud_cover") if best else None,
                 "source":       "HLS Sentinel-2 30m",
+            },
+            "sar": {
+                "available":     s1_result.get("available"),
+                "granule_count": s1_result.get("granule_count"),
+                "latest_date":   s1_result.get("latest", {}).get("time_start") if s1_result.get("latest") else None,
+                "source":        s1_result.get("source"),
+                "note":          s1_result.get("note"),
             },
             "soil_moisture": {
                 **era5,
@@ -128,6 +127,10 @@ class ProfileBuilder:
                 "size_class":         size_class,
                 "area_ha":            area_ha,
                 "confidence_penalty": penalty,
+            },
+            "sensor_limitations": {
+                "palsar2":    "Not available for Ireland on NASA Earthdata",
+                "sentinel1":  "C-band only - Barrett 2014 C+L kappa=0.98 vs C alone=0.87",
             },
             "generated_at": datetime.now(timezone.utc).isoformat(),
         }
