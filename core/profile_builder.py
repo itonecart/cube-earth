@@ -5,7 +5,9 @@ from extractors.nasadem_extractor import NASADEMExtractor
 from extractors.hls_extractor import HLSExtractor
 from extractors.sentinel1_extractor import Sentinel1Extractor
 from extractors.smap_extractor import SMAPExtractor
+from extractors.ecostress_extractor import ECOSTRESSExtractor
 from parsers.hls_parser import compute_indices
+from parsers.ecostress_parser import extract_lst
 from parcel.lpis import LPISClient
 from parcel.geometry import parcel_size_class, confidence_penalty
 from analytics.soil_moisture import classify_surface, classify_rootzone, classify_drainage, n_mineralisation_risk
@@ -29,21 +31,15 @@ def interpret_gcap(v):
     return "Weak sward"
 
 def fuse_moisture(smap_surf, era5_surf, smap_root, era5_root):
-    # SMAP is direct observation — higher weight
-    # ERA5 is model reanalysis — lower weight
     def fuse(sat, model, sat_w=0.60, model_w=0.40):
-        if sat is None and model is None:
-            return None
-        if sat is None:
-            return model
-        if model is None:
-            return sat
+        if sat is None and model is None: return None
+        if sat is None: return model
+        if model is None: return sat
         return round(sat * sat_w + model * model_w, 4)
     return {
         "surface_fused":  fuse(smap_surf, era5_surf),
         "rootzone_fused": fuse(smap_root, era5_root),
         "method": "SMAP(60%) + ERA5(40%)",
-        "note": "SMAP direct observation weighted over ERA5 reanalysis",
     }
 
 
@@ -55,12 +51,14 @@ class ProfileBuilder:
         self.hls       = HLSExtractor()
         self.sentinel1 = Sentinel1Extractor()
         self.smap      = SMAPExtractor()
+        self.ecostress = ECOSTRESSExtractor()
         self.lpis      = LPISClient()
 
     async def build(self, lat, lng, year):
         start = f"{year}-04-01"
         end   = f"{year}-10-31"
 
+        # Run all extractors in parallel
         results = await asyncio.gather(
             self.era5.extract(lat, lng, start, end),
             self.nasadem.extract(lat, lng),
@@ -73,29 +71,25 @@ class ProfileBuilder:
         )
         era5_raw, dem_raw, parcel, commonage, hls_raw, s1_raw, smap_raw = results
 
-        era5 = self.era5.parse(
-            era5_raw if not isinstance(era5_raw, Exception) else None
-        )
-        dem = self.nasadem.parse(
-            dem_raw if not isinstance(dem_raw, Exception) else None
-        )
-        hls_result = self.hls.parse(
-            hls_raw if not isinstance(hls_raw, Exception) else None
-        )
-        s1_result = self.sentinel1.parse(
-            s1_raw if not isinstance(s1_raw, Exception) else None
-        )
-        smap_result = self.smap.parse(
-            smap_raw if not isinstance(smap_raw, Exception) else None
-        )
+        era5       = self.era5.parse(era5_raw if not isinstance(era5_raw, Exception) else None)
+        dem        = self.nasadem.parse(dem_raw if not isinstance(dem_raw, Exception) else None)
+        hls_result = self.hls.parse(hls_raw if not isinstance(hls_raw, Exception) else None)
+        s1_result  = self.sentinel1.parse(s1_raw if not isinstance(s1_raw, Exception) else None)
+        smap_result= self.smap.parse(smap_raw if not isinstance(smap_raw, Exception) else None)
+
+        # Run pixel extractions in parallel
+        best = hls_result.get("latest")
+        eco_raw = await self.ecostress.extract(lat, lng, start, end)
+        eco_result = self.ecostress.parse(eco_raw)
 
         indices = None
-        best = hls_result.get("latest")
         if best and hls_result.get("available"):
             try:
                 indices = await compute_indices(best, lat, lng)
             except Exception:
                 indices = None
+
+        lst = eco_result if eco_result.get("available") else None
 
         surf  = era5.get("surface_mean")
         root  = era5.get("rootzone_mean")
@@ -106,12 +100,10 @@ class ProfileBuilder:
         ndvi = indices.get("ndvi") if indices else None
         gcap = indices.get("gcap") if indices else None
 
-        # Fuse SMAP + ERA5
         smap_surf = smap_result.get("sm_surface_m3") if smap_result.get("available") else None
         smap_root = smap_result.get("sm_rootzone_m3") if smap_result.get("available") else None
-        fusion = fuse_moisture(smap_surf, surf, smap_root, root)
+        fusion    = fuse_moisture(smap_surf, surf, smap_root, root)
 
-        # Use fused moisture for analytics
         surf_use = fusion["surface_fused"] or surf
         root_use = fusion["rootzone_fused"] or root
 
@@ -140,6 +132,10 @@ class ProfileBuilder:
                 "cloud_cover":  best.get("cloud_cover") if best else None,
                 "source":       "HLS Sentinel-2 30m",
             },
+            "thermal": lst if lst and lst.get("available") else {
+                "available": False,
+                "source": "ECOSTRESS",
+            },
             "sar": {
                 "available":     s1_result.get("available"),
                 "granule_count": s1_result.get("granule_count"),
@@ -150,8 +146,8 @@ class ProfileBuilder:
                 "smap": smap_result,
                 "era5": {
                     **era5,
-                    "surface_status":   classify_surface(surf),
-                    "rootzone_status":  classify_rootzone(root),
+                    "surface_status":  classify_surface(surf),
+                    "rootzone_status": classify_rootzone(root),
                 },
                 "fused": {
                     **fusion,

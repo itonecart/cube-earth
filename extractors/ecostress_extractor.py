@@ -5,6 +5,9 @@ from parsers.ecostress_parser import extract_lst
 
 CMR_URL = "https://cmr.earthdata.nasa.gov/search/granules.json"
 
+# MGRS tiles that cover Ireland for ECOSTRESS
+IRELAND_TILES = {"29UPU", "29UPV", "29UQU", "29UQV", "30UUE", "30UVE"}
+
 
 class ECOSTRESSExtractor(BaseExtractor):
 
@@ -32,13 +35,20 @@ class ECOSTRESSExtractor(BaseExtractor):
                 links["qc"] = href
         return links
 
-    async def _search(self, lat, lng, start_date, end_date, page_size=50):
-        bbox = f"{lng-0.4},{lat-0.4},{lng+0.4},{lat+0.4}"
+    def _tile(self, entry):
+        title = entry.get("title", "")
+        for tile in IRELAND_TILES:
+            if tile in title:
+                return tile
+        return None
+
+    async def extract(self, lat, lng, start_date, end_date):
+        bbox = f"{lng-4.5},{lat-2.4},{lng+4.5},{lat+2.4}"
         params = {
             "collection_concept_id": self.collection,
             "temporal":   f"{start_date}T00:00:00Z,{end_date}T23:59:59Z",
             "bounding_box": bbox,
-            "page_size":  page_size,
+            "page_size":  50,
             "sort_key":   "-start_date",
         }
         async with httpx.AsyncClient(timeout=30) as client:
@@ -48,10 +58,7 @@ class ECOSTRESSExtractor(BaseExtractor):
                 params=params,
             )
             r.raise_for_status()
-        return r.json().get("feed", {}).get("entry", [])
-
-    async def extract(self, lat, lng, start_date, end_date):
-        entries = await self._search(lat, lng, start_date, end_date, page_size=50)
+        entries = r.json().get("feed", {}).get("entry", [])
 
         def score(e):
             from datetime import datetime, timezone
@@ -68,6 +75,8 @@ class ECOSTRESSExtractor(BaseExtractor):
         entries.sort(key=score, reverse=True)
 
         for entry in entries:
+            if not self._tile(entry):
+                continue
             links = self._parse_links(entry)
             if not links.get("lst"):
                 continue
@@ -76,21 +85,28 @@ class ECOSTRESSExtractor(BaseExtractor):
                 "time_start": entry.get("time_start"),
                 "links":      links,
             }
-            result = await extract_lst(granule, lat, lng)
-            if result.get("available"):
-                return granule
+            lst = await extract_lst(granule, lat, lng)
+            if lst and lst.get("available"):
+                return {
+                    "granule":   granule,
+                    "lst":       lst,
+                    "available": True,
+                }
 
-        return None
+        return {"available": False, "source": "ECOSTRESS"}
 
     def parse(self, raw):
-        if not raw:
+        if not raw or not raw.get("available"):
             return {"available": False, "source": "ECOSTRESS"}
+        lst = raw.get("lst", {})
         return {
-            "available":  True,
-            "title":      raw.get("title"),
-            "time_start": raw.get("time_start"),
-            "links":      raw.get("links"),
-            "source":     "ECOSTRESS ECO_L2T_LSTE V002 (70m)",
+            "available":      True,
+            "celsius":        lst.get("celsius"),
+            "kelvin":         lst.get("kelvin"),
+            "interpretation": lst.get("interpretation"),
+            "granule_time":   lst.get("granule_time"),
+            "resolution_m":   70,
+            "source":         "ECOSTRESS ECO_L2T_LSTE V002 (70m)",
         }
 
     def quality(self):
@@ -99,7 +115,7 @@ class ECOSTRESSExtractor(BaseExtractor):
             "confidence":  "high",
             "resolution":  "70m",
             "limitations": [
-                "Cloud cover limits availability",
-                "Ireland Atlantic cloud - 180 day search needed",
+                "Ireland tiles: 29UPU, 29UPV, 29UQU, 29UQV",
+                "Cloud cover limits valid retrievals",
             ],
         }
