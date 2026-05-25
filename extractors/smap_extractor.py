@@ -94,11 +94,14 @@ class SMAPExtractor(BaseExtractor):
 
     async def extract(self, lat, lng, start_date, end_date):
         import datetime
-        # Use midseason date
+        today = datetime.date.today()
         start = datetime.date.fromisoformat(start_date)
         end   = datetime.date.fromisoformat(end_date)
-        mid   = start + (end - start) / 2
-        date_str = str(mid)
+        # Use most recent date within range
+        if today <= end:
+            date_str = str(min(today, end))
+        else:
+            date_str = str(end)
 
         granule = await self.find_granule(lat, lng, date_str)
         if not granule:

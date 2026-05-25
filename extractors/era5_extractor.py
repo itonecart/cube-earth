@@ -11,6 +11,16 @@ class ERA5Extractor(BaseExtractor):
         super().__init__("era5")
 
     async def extract(self, lat, lng, start_date, end_date):
+        import datetime
+        today = datetime.date.today()
+        # If end_date is in future, cap at today
+        end = min(datetime.date.fromisoformat(end_date), today)
+        # If start is after today, use last 30 days
+        start = datetime.date.fromisoformat(start_date)
+        if start > today:
+            start = today - datetime.timedelta(days=30)
+        start_date = str(start)
+        end_date   = str(end)
         params = {
             "latitude":   lat,
             "longitude":  lng,
