@@ -459,9 +459,31 @@ def overall_confidence(s2c, smapc, era5c, s1c, ecoc, parcelc, agreement):
         },
     }
 
+    # Uncertainty breakdown
+    uncertainty = []
+    if ecoc["level"] == "unavailable":
+        uncertainty.append("ECOSTRESS unavailable — thermal dimension absent")
+    if s2c.get("age_days") and s2c["age_days"] > 20:
+        uncertainty.append(f"Sentinel-2 {s2c['age_days']} days old — vegetation state may have changed")
+    if s1c.get("age_days") and s1c["age_days"] > 7:
+        uncertainty.append(f"Sentinel-1 {s1c['age_days']} days old — SAR signal temporal lag")
+    if agreement["score"] < 8.5:
+        uncertainty.append("Moderate sensor disagreement — cross-validate before decisions")
+
+    # What reduced confidence
+    reducers = []
+    if ecoc["level"] == "unavailable":
+        reducers.append({"factor": "ECOSTRESS unavailable", "impact": "thermal layer absent"})
+    if s2c.get("age_days") and s2c["age_days"] > 20:
+        reducers.append({"factor": f"Sentinel-2 {s2c['age_days']}d old", "impact": "age penalty applied"})
+    if s1c.get("age_days") and s1c["age_days"] > 7:
+        reducers.append({"factor": f"Sentinel-1 {s1c['age_days']}d old", "impact": "minor age penalty"})
+
     return {"score": round(weighted, 1), "level": level, "explanation": explanation,
             "weights": weights, "sensor_scores": scores,
             "contributions": contributions,
+            "uncertainty": uncertainty,
+            "confidence_reducers": reducers,
             "breakdown": {"sentinel2": s2c, "smap": smapc, "era5": era5c,
                           "sentinel1": s1c, "ecostress": ecoc,
                           "parcel": parcelc, "agreement": agreement}}
