@@ -118,7 +118,7 @@ class ProfileBuilder:
         drainage = classify_drainage(surf_use, slope)
         drought  = drought_stress_index(surf_use, root_use)
         waterlog = waterlogging_probability(surf_use, root_use, slope)
-        grazing  = grazing_suitability(surf_use, slope, waterlog["probability"], area_ha)
+        grazing  = grazing_suitability(surf_use, slope, waterlog["probability"], area_ha, ndvi=veg.get("ndvi"), crop=parcel.get("crop") if parcel else None)
         traffic  = machinery_trafficability(surf_use, root_use, slope)
         slurry   = slurry_suitability(surf_use, slope, traffic["score"])
 
