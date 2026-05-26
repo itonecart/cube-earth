@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cube Earth — Irish Field Intelligence</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0a0f0d;
+    --surface:   #111a15;
+    --border:    #1e2e22;
+    --green:     #3ddc84;
+    --amber:     #f5a623;
+    --red:       #e05252;
+    --text:      #d4e8d8;
+    --muted:     #5a7a62;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:var(--sans); background:var(--bg); color:var(--text); height:100vh; overflow:hidden; display:flex; }
+
+  #map { flex:1; height:100vh; cursor:crosshair; }
+
+  #sidebar {
+    width:380px; min-width:380px; height:100vh;
+    background:var(--surface); border-left:1px solid var(--border);
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+
+  .header { padding:20px 24px 16px; border-bottom:1px solid var(--border); background:var(--bg); }
+  .logo { font-family:var(--mono); font-size:11px; letter-spacing:0.15em; color:var(--green); text-transform:uppercase; margin-bottom:4px; }
+  .tagline { font-size:12px; color:var(--muted); font-weight:300; }
+
+  .coord-bar { padding:12px 24px; background:var(--bg); border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; }
+  .coord-bar input { flex:1; background:var(--surface); border:1px solid var(--border); color:var(--text); font-family:var(--mono); font-size:12px; padding:8px 12px; border-radius:4px; outline:none; }
+  .coord-bar input:focus { border-color:var(--green); }
+
+  .btn-scan { background:var(--green); color:var(--bg); border:none; font-family:var(--mono); font-size:11px; font-weight:500; padding:8px 16px; border-radius:4px; cursor:pointer; letter-spacing:0.05em; transition:opacity 0.15s; }
+  .btn-scan:hover { opacity:0.85; }
+  .btn-scan:disabled { opacity:0.4; cursor:not-allowed; }
+
+  #content { flex:1; overflow-y:auto; }
+  #content::-webkit-scrollbar { width:4px; }
+  #content::-webkit-scrollbar-track { background:var(--bg); }
+  #content::-webkit-scrollbar-thumb { background:var(--border); border-radius:2px; }
+
+  .idle { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:12px; color:var(--muted); padding:40px; text-align:center; }
+  .idle-icon { width:48px; height:48px; border:1px solid var(--border); border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:20px; }
+  .idle p { font-size:13px; line-height:1.6; }
+
+  .loading { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; gap:16px; color:var(--muted); }
+  .spinner { width:32px; height:32px; border:2px solid var(--border); border-top-color:var(--green); border-radius:50%; animation:spin 0.8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  .loading-steps { font-family:var(--mono); font-size:11px; text-align:center; line-height:2; }
+  .loading-steps span { display:block; opacity:0.4; }
+  .loading-steps span.active { opacity:1; color:var(--green); }
+
+  .section { border-bottom:1px solid var(--border); padding:16px 24px; }
+  .section-label { font-family:var(--mono); font-size:10px; letter-spacing:0.12em; color:var(--muted); text-transform:uppercase; margin-bottom:12px; }
+
+  .parcel-name { font-size:13px; font-weight:500; color:var(--text); margin-bottom:4px; }
+  .parcel-meta { font-family:var(--mono); font-size:11px; color:var(--muted); }
+
+  .conf-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+  .conf-score { font-family:var(--mono); font-size:28px; font-weight:500; color:var(--green); line-height:1; }
+  .conf-level { font-size:12px; color:var(--muted); text-align:right; }
+  .conf-bar-wrap { height:4px; background:var(--border); border-radius:2px; margin-bottom:8px; }
+  .conf-bar-fill { height:100%; background:var(--green); border-radius:2px; transition:width 0.6s ease; }
+
+  .contrib-grid { display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:10px; }
+  .contrib-item { background:var(--bg); border:1px solid var(--border); border-radius:4px; padding:8px 10px; }
+  .contrib-name { font-size:10px; color:var(--muted); margin-bottom:3px; }
+  .contrib-pct { font-family:var(--mono); font-size:13px; color:var(--text); }
+  .contrib-item.zero .contrib-pct { color:var(--muted); }
+
+  .sensor-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .sensor-card { background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:12px; position:relative; overflow:hidden; }
+  .sensor-card::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:var(--green); }
+  .sensor-card.stale::before { background:var(--amber); }
+  .sensor-card.unavailable::before { background:var(--border); }
+  .sensor-name { font-family:var(--mono); font-size:9px; letter-spacing:0.1em; color:var(--muted); text-transform:uppercase; margin-bottom:8px; }
+  .sensor-value { font-family:var(--mono); font-size:18px; font-weight:500; color:var(--text); line-height:1; margin-bottom:2px; }
+  .sensor-unit { font-family:var(--mono); font-size:10px; color:var(--muted); }
+  .sensor-age { position:absolute; top:10px; right:10px; font-family:var(--mono); font-size:9px; color:var(--muted); }
+
+  .agreement-score { font-family:var(--mono); font-size:22px; color:var(--green); margin-bottom:8px; }
+  .agreement-list { list-style:none; }
+  .agreement-list li { font-size:11px; color:var(--text); padding:4px 0 4px 14px; position:relative; line-height:1.5; }
+  .agreement-list li::before { content:'+'; position:absolute; left:0; color:var(--green); font-family:var(--mono); }
+  .agreement-list li.flag::before { content:'!'; color:var(--amber); }
+
+  .agro-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
+  .agro-card { background:var(--bg); border:1px solid var(--border); border-radius:6px; padding:10px; text-align:center; }
+  .agro-label { font-size:9px; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; margin-bottom:6px; }
+  .agro-value { font-size:13px; font-weight:500; color:var(--text); }
+  .agro-value.good { color:var(--green); }
+  .agro-value.moderate { color:var(--amber); }
+  .agro-value.poor { color:var(--red); }
+
+  .explain-item { margin-bottom:12px; }
+  .explain-title { font-size:12px; font-weight:500; color:var(--text); margin-bottom:4px; }
+  .explain-because { list-style:none; }
+  .explain-because li { font-size:11px; color:var(--muted); padding:2px 0 2px 12px; position:relative; line-height:1.5; }
+  .explain-because li::before { content:'—'; position:absolute; left:0; color:var(--border); }
+
+  .freshness-strip { display:flex; gap:6px; flex-wrap:wrap; }
+  .fresh-chip { font-family:var(--mono); font-size:10px; padding:3px 8px; border-radius:3px; border:1px solid var(--border); color:var(--muted); }
+  .fresh-chip.current { border-color:var(--green); color:var(--green); }
+  .fresh-chip.recent  { border-color:#4a8a5a; color:#4a8a5a; }
+  .fresh-chip.stale   { border-color:var(--amber); color:var(--amber); }
+
+  /* Leaflet dark override */
+  .leaflet-container { background:#0a0f0d; }
+  .leaflet-control-zoom a { background:var(--surface); color:var(--text); border-color:var(--border); }
+  .leaflet-control-zoom a:hover { background:var(--border); }
+  .leaflet-control-attribution { background:rgba(10,15,13,0.8); color:var(--muted); font-size:9px; }
+</style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<div id="sidebar">
+  <div class="header">
+    <div class="logo">⬡ Cube Earth</div>
+    <div class="tagline">Irish Field Intelligence · Live Satellite Data</div>
+  </div>
+  <div class="coord-bar">
+    <input type="text" id="coord-input" placeholder="53.7100, -6.2900"/>
+    <button class="btn-scan" id="scan-btn" onclick="scanCoords()">SCAN</button>
+  </div>
+  <div id="content">
+    <div class="idle">
+      <div class="idle-icon">⊕</div>
+      <p>Click anywhere on the map or enter coordinates to scan an Irish field with live satellite data.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+const API_URL = 'https://cube-earth.onrender.com';
+
+// ── MAP ──
+const map = L.map('map', { zoomControl:false }).setView([53.5, -8.0], 7);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution:'© OpenStreetMap',
+  maxZoom:19,
+}).addTo(map);
+
+// Ireland OSM Cycle map (shows field boundaries better)
+const ortho = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  { attribution:'Esri World Imagery', maxZoom:19 }
+);
+
+const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  { attribution:'© OpenStreetMap', maxZoom:19 });
+
+L.control.layers({ 'Satellite': ortho, 'Street': osm }).addTo(map);
+ortho.addTo(map);
+
+L.control.zoom({ position:'bottomright' }).addTo(map);
+
+let marker = null;
+
+const markerIcon = L.divIcon({
+  className: '',
+  html: '<div style="width:14px;height:14px;background:#3ddc84;border:2px solid #0a0f0d;border-radius:50%;box-shadow:0 0 0 2px #3ddc84"></div>',
+  iconSize:[14,14], iconAnchor:[7,7],
+});
+
+map.on('click', e => {
+  const { lat, lng } = e.latlng;
+  document.getElementById('coord-input').value = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+  placeMarker(lat, lng);
+  scanField(lat, lng);
+});
+
+function placeMarker(lat, lng) {
+  if (marker) marker.remove();
+  marker = L.marker([lat, lng], { icon:markerIcon }).addTo(map);
+}
+
+function scanCoords() {
+  const val = document.getElementById('coord-input').value.trim();
+  const parts = val.split(',').map(s => parseFloat(s.trim()));
+  if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+    placeMarker(parts[0], parts[1]);
+    map.flyTo([parts[0], parts[1]], 14);
+    scanField(parts[0], parts[1]);
+  }
+}
+
+// ── SCAN ──
+async function scanField(lat, lng) {
+  const year = new Date().getFullYear();
+  showLoading();
+  try {
+    const res = await fetch(`${API_URL}/field_profile`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ lat, lng, year }),
+    });
+    const data = await res.json();
+    if (data.success) renderProfile(data);
+    else showError(data.detail || 'API error');
+  } catch(err) {
+    showError(err.message);
+  }
+}
+
+// ── LOADING ──
+let stepInterval = null;
+function showLoading() {
+  document.getElementById('scan-btn').disabled = true;
+  document.getElementById('content').innerHTML = `
+    <div class="loading">
+      <div class="spinner"></div>
+      <div class="loading-steps">
+        <span>Querying satellite archive</span>
+        <span>Extracting field pixels</span>
+        <span>Computing confidence</span>
+        <span>Generating profile</span>
+      </div>
+    </div>`;
+  let step = 0;
+  if (stepInterval) clearInterval(stepInterval);
+  const steps = document.querySelectorAll('.loading-steps span');
+  if (steps[0]) steps[0].classList.add('active');
+  stepInterval = setInterval(() => {
+    steps.forEach(s => s.classList.remove('active'));
+    step = (step + 1) % steps.length;
+    steps[step].classList.add('active');
+  }, 2500);
+}
+
+// ── RENDER ──
+function scoreColor(label) {
+  if (!label) return '';
+  const l = label.toLowerCase();
+  if (l.includes('excellent') || l.includes('good') || l.includes('suitable')) return 'good';
+  if (l.includes('moderate')) return 'moderate';
+  if (l.includes('poor') || l.includes('unsuitable') || l.includes('stress')) return 'poor';
+  return '';
+}
+
+function renderProfile(d) {
+  if (stepInterval) clearInterval(stepInterval);
+  document.getElementById('scan-btn').disabled = false;
+  const c=d.confidence, v=d.vegetation, sm=d.soil_moisture,
+        s=d.sar, a=d.agreement, e=d.explainability,
+        f=d.freshness, ag=d.agronomic, p=d.parcel, te=d.terrain;
+
+  document.getElementById('content').innerHTML = `
+
+  <div class="section">
+    <div class="section-label">Parcel</div>
+    <div class="parcel-name">${p ? p.crop||'Unknown crop' : 'No parcel matched'}</div>
+    <div class="parcel-meta">${p ? `${p.claim_area} ha · ${p.olr||''} · ` : ''}${te.elevation_m}m · ${te.terrain}</div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Confidence</div>
+    <div class="conf-row">
+      <div class="conf-score">${c.score}<span style="font-size:14px;color:var(--muted)">/10</span></div>
+      <div class="conf-level">${c.level.replace('-',' ').toUpperCase()}</div>
+    </div>
+    <div class="conf-bar-wrap"><div class="conf-bar-fill" style="width:${c.score*10}%"></div></div>
+    <div class="contrib-grid">
+      ${Object.entries(c.contributions).map(([k,v])=>`
+        <div class="contrib-item ${v.percent===0?'zero':''}">
+          <div class="contrib-name">${k}</div>
+          <div class="contrib-pct">${v.percent===0?'—':v.percent.toFixed(1)+'%'}${v.age_days?`<span style="font-size:9px;color:var(--muted);margin-left:4px">${v.age_days}d</span>`:''}</div>
+        </div>`).join('')}
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Live Sensors</div>
+    <div class="sensor-grid">
+      <div class="sensor-card ${f?.sentinel2?.freshness==='stale'?'stale':''}">
+        <div class="sensor-name">Sentinel-2</div>
+        <div class="sensor-age">${f?.sentinel2?.age_label||''}</div>
+        <div class="sensor-value">${v.ndvi?.toFixed(3)||'—'}</div>
+        <div class="sensor-unit">NDVI · ${v.ndvi_status||''}</div>
+      </div>
+      <div class="sensor-card ${sm.smap?.available?'':'unavailable'}">
+        <div class="sensor-name">SMAP L4</div>
+        <div class="sensor-age">${f?.smap?.age_label||''}</div>
+        <div class="sensor-value">${sm.smap?.sm_surface_m3?.toFixed(3)||'—'}</div>
+        <div class="sensor-unit">m³/m³ surface</div>
+      </div>
+      <div class="sensor-card ${s?.available?'':'unavailable'}">
+        <div class="sensor-name">SAR RVI</div>
+        <div class="sensor-age">${f?.sentinel1?.age_label||''}</div>
+        <div class="sensor-value">${s?.rvi?.toFixed(3)||'—'}</div>
+        <div class="sensor-unit">${s?.rvi_interpretation||'No data'}</div>
+      </div>
+      <div class="sensor-card">
+        <div class="sensor-name">ERA5</div>
+        <div class="sensor-age">seasonal</div>
+        <div class="sensor-value">${sm.era5?.surface_mean?.toFixed(3)||'—'}</div>
+        <div class="sensor-unit">m³/m³ trend</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Data Freshness</div>
+    <div class="freshness-strip">
+      ${Object.entries(f||{}).map(([k,v])=>`
+        <div class="fresh-chip ${v.freshness||''}">
+          ${v.sensor?.split(' ')[0]} · ${v.age_label||v.freshness}
+        </div>`).join('')}
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Cross-sensor Agreement · ${a.score}/10</div>
+    <ul class="agreement-list">
+      ${(a.agreements||[]).map(t=>`<li>${t}</li>`).join('')}
+      ${(a.flags||[]).map(t=>`<li class="flag">${t}</li>`).join('')}
+    </ul>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Field Decisions</div>
+    <div class="agro-grid">
+      <div class="agro-card">
+        <div class="agro-label">Grazing</div>
+        <div class="agro-value ${scoreColor(ag.grazing_suitability?.label)}">${ag.grazing_suitability?.label||'—'}</div>
+      </div>
+      <div class="agro-card">
+        <div class="agro-label">Machinery</div>
+        <div class="agro-value ${scoreColor(ag.machinery_trafficability?.label)}">${ag.machinery_trafficability?.label||'—'}</div>
+      </div>
+      <div class="agro-card">
+        <div class="agro-label">Slurry</div>
+        <div class="agro-value ${scoreColor(ag.slurry_spreading?.suitable)}">${ag.slurry_spreading?.suitable||'—'}</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-label">Why These Scores</div>
+    ${Object.entries(e||{}).map(([k,v])=>`
+      <div class="explain-item">
+        <div class="explain-title">${k.charAt(0).toUpperCase()+k.slice(1)}: ${v.label||''}</div>
+        <ul class="explain-because">
+          ${(v.because||[]).map(b=>`<li>${b}</li>`).join('')}
+        </ul>
+      </div>`).join('')}
+  </div>`;
+}
+
+function showError(msg) {
+  if (stepInterval) clearInterval(stepInterval);
+  document.getElementById('scan-btn').disabled = false;
+  document.getElementById('content').innerHTML = `
+    <div class="idle">
+      <div class="idle-icon" style="border-color:var(--red)">✕</div>
+      <p style="color:var(--red)">${msg}</p>
+    </div>`;
+}
+</script>
+</body>
+</html>
