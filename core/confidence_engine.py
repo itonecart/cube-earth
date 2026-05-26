@@ -317,20 +317,21 @@ def explainability(grazing, traffic, slurry, drought, waterlog,
         return {"label": label, "score": score, "because": reasons}
 
     grazing_reasons = []
-    if ndvi is not None:
-        grazing_reasons.append(
-            f"NDVI {ndvi:.2f}{age_note(s2_age)} — "
-            f"{'good' if ndvi > 0.65 else 'moderate' if ndvi > 0.45 else 'low'} grass cover")
-    if surf_use is not None:
-        grazing_reasons.append(
-            f"Soil moisture {surf_use:.3f} m3/m3{age_note(smap_age)} — "
-            f"{'wet, poaching risk' if surf_use > 0.38 else 'adequate' if surf_use > 0.25 else 'dry'}")
-    if slope is not None:
-        grazing_reasons.append(
-            f"Slope {slope:.1f}deg — "
-            f"{'flat, easy access' if slope < 3 else 'moderate slope' if slope < 8 else 'steep'}")
-    if waterlog["probability"] != "low":
-        grazing_reasons.append(f"Waterlogging {waterlog['probability']} — limits grazing days")
+    if grazing is not None:
+        if ndvi is not None:
+            grazing_reasons.append(
+                f"NDVI {ndvi:.2f}{age_note(s2_age)} — "
+                f"{'good' if ndvi > 0.65 else 'moderate' if ndvi > 0.45 else 'low'} grass cover")
+        if surf_use is not None:
+            grazing_reasons.append(
+                f"Soil moisture {surf_use:.3f} m3/m3{age_note(smap_age)} — "
+                f"{'wet, poaching risk' if surf_use > 0.38 else 'adequate' if surf_use > 0.25 else 'dry'}")
+        if slope is not None:
+            grazing_reasons.append(
+                f"Slope {slope:.1f}deg — "
+                f"{'flat, easy access' if slope < 3 else 'moderate slope' if slope < 8 else 'steep'}")
+        if waterlog["probability"] != "low":
+            grazing_reasons.append(f"Waterlogging {waterlog['probability']} — limits grazing days")
 
     traffic_reasons = []
     if surf_use is not None:
@@ -365,7 +366,7 @@ def explainability(grazing, traffic, slurry, drought, waterlog,
         drought_reasons.append(f"NDVI {ndvi:.2f}{age_note(s2_age)} — vegetation response")
 
     return {
-        "grazing":   build(grazing["label"], grazing["score"], grazing_reasons),
+        "grazing":   build(grazing["label"], grazing["score"], grazing_reasons) if grazing else None,
         "machinery": build(traffic["label"], traffic["score"], traffic_reasons),
         "slurry":    build(slurry["suitable"], None, slurry_reasons),
         "drought":   build(drought["label"], drought["score"], drought_reasons),
