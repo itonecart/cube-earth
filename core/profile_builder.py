@@ -14,6 +14,8 @@ from parcel.geometry import parcel_size_class, confidence_penalty
 from analytics.soil_moisture import classify_surface, classify_rootzone, classify_drainage, n_mineralisation_risk
 from analytics.drought import drought_stress_index, waterlogging_probability
 from analytics.grazing import grazing_suitability, machinery_trafficability, slurry_suitability
+from analytics.crop_classifier import classify_crop, ndvi_status_for_crop
+from analytics.tillage import tillage_decisions
 from core.confidence_engine import (
     s2_confidence, smap_confidence, era5_confidence,
     s1_confidence, ecostress_confidence, parcel_confidence,
@@ -107,6 +109,9 @@ class ProfileBuilder:
         penalty    = confidence_penalty(size_class)
         ndvi = indices.get("ndvi") if indices else None
         gcap = indices.get("gcap") if indices else None
+        crop_str   = parcel.get("crop") if parcel else None
+        crop_info  = classify_crop(crop_str)
+        crop_class = crop_info["class"]
 
         smap_surf = smap_result.get("sm_surface_m3") if smap_result.get("available") else None
         smap_root = smap_result.get("sm_rootzone_m3") if smap_result.get("available") else None
@@ -118,9 +123,26 @@ class ProfileBuilder:
         drainage = classify_drainage(surf_use, slope)
         drought  = drought_stress_index(surf_use, root_use)
         waterlog = waterlogging_probability(surf_use, root_use, slope)
-        grazing  = grazing_suitability(surf_use, slope, waterlog["probability"], area_ha, ndvi=ndvi, crop=parcel.get("crop") if parcel else None)
         traffic  = machinery_trafficability(surf_use, root_use, slope)
         slurry   = slurry_suitability(surf_use, slope, traffic["score"])
+
+        # Crop-aware decisions
+        if crop_class == "grassland" or crop_info.get("grazing_relevant"):
+            grazing  = grazing_suitability(surf_use, slope, waterlog["probability"], area_ha, ndvi=ndvi, crop=crop_str)
+            tillage_intel = None
+        else:
+            grazing = None
+            ndvi_age = None
+            if best:
+                from datetime import datetime, timezone
+                try:
+                    ts = best.get("time_start","")
+                    if ts:
+                        t = datetime.fromisoformat(ts.replace("Z","+00:00"))
+                        ndvi_age = (datetime.now(timezone.utc) - t).days
+                except Exception:
+                    pass
+            tillage_intel = tillage_decisions(ndvi, ndvi_age, surf_use, root_use, slope, crop_str, traffic["score"])
 
         # Confidence engine
         s2c     = s2_confidence(
@@ -175,7 +197,7 @@ class ProfileBuilder:
                 "ndre":         indices.get("ndre") if indices else None,
                 "cire":         indices.get("cire") if indices else None,
                 "gcap":         gcap,
-                "ndvi_status":  interpret_ndvi(ndvi),
+                "ndvi_status":  ndvi_status_for_crop(ndvi, crop_class),
                 "gcap_status":  interpret_gcap(gcap),
                 "granule_date": best.get("time_start") if best else None,
                 "cloud_cover":  best.get("cloud_cover") if best else None,
@@ -219,7 +241,10 @@ class ProfileBuilder:
                 "waterlogging": waterlog,
             },
             "agronomic": {
+                "crop_class":               crop_class,
+                "crop_info":                crop_info,
                 "grazing_suitability":      grazing,
+                "tillage_intelligence":     tillage_intel,
                 "machinery_trafficability": traffic,
                 "slurry_spreading":         slurry,
             },
