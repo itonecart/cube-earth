@@ -134,12 +134,12 @@ class ProfileBuilder:
             grazing = None
             ndvi_age = None
             if best:
-                from datetime import datetime, timezone
                 try:
+                    from datetime import datetime as _dt, timezone as _tz
                     ts = best.get("time_start","")
                     if ts:
-                        t = datetime.fromisoformat(ts.replace("Z","+00:00"))
-                        ndvi_age = (datetime.now(timezone.utc) - t).days
+                        t = _dt.fromisoformat(ts.replace("Z","+00:00"))
+                        ndvi_age = (_dt.now(_tz.utc) - t).days
                 except Exception:
                     pass
             tillage_intel = tillage_decisions(ndvi, ndvi_age, surf_use, root_use, slope, crop_str, traffic["score"])
