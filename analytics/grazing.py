@@ -66,13 +66,21 @@ def grazing_suitability(surface_sm, slope, waterlog_prob, area_ha, ndvi=None, cr
     else:
         breakdown["seasonal"] = {"points": 0, "reason": "Crop type neutral"}
 
-    label = (
-        "Excellent" if score >= 7 else
-        "Good"      if score >= 5 else
-        "Moderate"  if score >= 3 else
-        "Poor"      if score >= 1 else
-        "Not suitable"
-    )
+    # Tillage override — never suitable for grazing
+    is_tillage = crop and any(x in crop.lower() for x in 
+        ["rape", "wheat", "barley", "oat", "cereal", "tillage", 
+         "maize", "beet", "potato", "vegetable"])
+    
+    if is_tillage:
+        label = "Not suitable — tillage crop"
+    else:
+        label = (
+            "Excellent" if score >= 7 else
+            "Good"      if score >= 5 else
+            "Moderate"  if score >= 3 else
+            "Poor"      if score >= 1 else
+            "Not suitable"
+        )
 
     note = None
     if area_ha and area_ha < 0.5:
