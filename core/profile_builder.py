@@ -124,7 +124,11 @@ class ProfileBuilder:
         drought  = drought_stress_index(surf_use, root_use)
         waterlog = waterlogging_probability(surf_use, root_use, slope)
         traffic  = machinery_trafficability(surf_use, root_use, slope)
-        slurry   = slurry_suitability(surf_use, slope, traffic["score"])
+        # Slurry only relevant for grassland/pasture systems
+        if crop_class in ("grassland", "unknown") or crop_info.get("grazing_relevant"):
+            slurry = slurry_suitability(surf_use, slope, traffic["score"])
+        else:
+            slurry = None
 
         # Crop-aware decisions
         if crop_class == "grassland" or crop_info.get("grazing_relevant"):

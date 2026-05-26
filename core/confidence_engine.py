@@ -250,6 +250,8 @@ def cross_sensor_agreement(ndvi, smap_surf, era5_surf, s1_granules, rvi=None, vv
                 score += 0.5
                 agreements.append(
                     f"SAR RVI {rvi:.2f} and optical NDVI {ndvi:.2f} — both independently support moderate vegetation condition"
+                    if not (s2_age and s2_age > 20) else
+                    f"SAR RVI {rvi:.2f} and optical NDVI {ndvi:.2f} — broadly consistent, though optical data {s2_age} days old increases vegetation state uncertainty"
                 )
         else:
             agreements.append(f"SAR granules available ({s1_granules}) — backscatter pending")
@@ -368,7 +370,7 @@ def explainability(grazing, traffic, slurry, drought, waterlog,
     return {
         "grazing":   build(grazing["label"], grazing["score"], grazing_reasons) if grazing else None,
         "machinery": build(traffic["label"], traffic["score"], traffic_reasons),
-        "slurry":    build(slurry["suitable"], None, slurry_reasons),
+        "slurry":    build(slurry["suitable"], None, slurry_reasons) if slurry else None,
         "drought":   build(drought["label"], drought["score"], drought_reasons),
     }
 
@@ -480,11 +482,25 @@ def overall_confidence(s2c, smapc, era5c, s1c, ecoc, parcelc, agreement):
     if s1c.get("age_days") and s1c["age_days"] > 7:
         reducers.append({"factor": f"Sentinel-1 {s1c['age_days']}d old", "impact": "minor age penalty"})
 
+    # What strengthened confidence
+    boosters = []
+    if agreement["score"] >= 9.0:
+        boosters.append({"factor": "Strong sensor agreement", "impact": f"{agreement['score']}/10 cross-sensor consistency"})
+    if smapc.get("age_days") is not None and smapc["age_days"] <= 2:
+        boosters.append({"factor": "SMAP soil moisture current", "impact": f"{smapc['age_days']} day old L-band observation"})
+    if s1c.get("age_days") is not None and s1c["age_days"] <= 3:
+        boosters.append({"factor": "SAR signal recent", "impact": f"Sentinel-1 {s1c['age_days']} days old"})
+    if s2c.get("age_days") is not None and s2c["age_days"] <= 7:
+        boosters.append({"factor": "Optical data fresh", "impact": f"Sentinel-2 {s2c['age_days']} days old"})
+    if parcelc.get("score", 0) >= 9:
+        boosters.append({"factor": "LPIS parcel matched", "impact": "Official Irish parcel boundary confirmed"})
+
     return {"score": round(weighted, 1), "level": level, "explanation": explanation,
             "weights": weights, "sensor_scores": scores,
             "contributions": contributions,
             "uncertainty": uncertainty,
             "confidence_reducers": reducers,
+            "confidence_boosters": boosters,
             "breakdown": {"sentinel2": s2c, "smap": smapc, "era5": era5c,
                           "sentinel1": s1c, "ecostress": ecoc,
                           "parcel": parcelc, "agreement": agreement}}
