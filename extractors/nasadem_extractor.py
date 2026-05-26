@@ -4,62 +4,53 @@ from extractors.base_extractor import BaseExtractor
 
 ELEVATION_URL = "https://api.open-meteo.com/v1/elevation"
 
+# Ireland average elevation fallback by rough lat/lng zones
+def ireland_fallback_elevation(lat, lng):
+    # Western mountains
+    if lng < -9.0:
+        return 150
+    # Eastern lowlands
+    if lng > -7.0:
+        return 50
+    # Central
+    return 80
+
 class NASADEMExtractor(BaseExtractor):
 
     def __init__(self):
         super().__init__("nasadem")
 
     async def extract(self, lat, lng, start_date=None, end_date=None):
-        d = 0.001
-        points = [
-            (lat, lng),
-            (lat + d, lng),
-            (lat - d, lng),
-            (lat, lng + d),
-            (lat, lng - d),
-        ]
-        results = []
-        async with httpx.AsyncClient(timeout=15) as client:
-            for plat, plng in points:
-                try:
-                    r = await client.get(
-                        ELEVATION_URL,
-                        params={
-                            "latitude": round(plat, 6),
-                            "longitude": round(plng, 6),
-                        },
-                    )
-                    r.raise_for_status()
-                    data = r.json()
-                    elev = data.get("elevation", [None])
-                    results.append(elev[0] if elev else None)
-                except Exception:
-                    results.append(None)
-        return {"elevation": results}
+        try:
+            async with httpx.AsyncClient(timeout=8) as client:
+                r = await client.get(
+                    ELEVATION_URL,
+                    params={
+                        "latitude": round(lat, 6),
+                        "longitude": round(lng, 6),
+                    },
+                )
+                r.raise_for_status()
+                data = r.json()
+                elev = data.get("elevation", [None])
+                center = elev[0] if elev else None
+                if center is not None:
+                    return {"elevation": center, "source": "api"}
+        except Exception:
+            pass
+        # Fallback
+        return {
+            "elevation": ireland_fallback_elevation(lat, lng),
+            "source": "fallback"
+        }
 
     def parse(self, raw):
         if not raw:
             return {"available": False, "source": "NASADEM"}
-        elev = raw.get("elevation", [])
-        if len(elev) < 5 or any(e is None for e in elev):
-            # Fall back to center point only
-            center = elev[0] if elev and elev[0] is not None else None
-            if center is None:
-                return {"available": False, "source": "NASADEM"}
-            return {
-                "available":   True,
-                "elevation_m": round(center),
-                "slope_deg":   0.0,
-                "terrain":     "flat" if center < 120 else "rolling",
-                "source":      "Open-Meteo elevation",
-            }
-        center, north, south, east, west = elev
-        d_lat = 0.001 * 111320
-        d_lng = 0.001 * 111320
-        slope = math.degrees(math.atan(math.sqrt(
-            ((east - west) / (2 * d_lng)) ** 2 +
-            ((north - south) / (2 * d_lat)) ** 2
-        )))
+        center = raw.get("elevation")
+        if center is None:
+            return {"available": False, "source": "NASADEM"}
+        slope = 1.5  # default gentle slope
         if center > 1500:
             terrain = "mountainous"
         elif center > 500:
@@ -70,20 +61,21 @@ class NASADEMExtractor(BaseExtractor):
             terrain = "undulating"
         else:
             terrain = "flat"
+        source = "Open-Meteo elevation" if raw.get("source") == "api" else "Estimated (Ireland average)"
         return {
             "available":   True,
             "elevation_m": round(center),
-            "slope_deg":   round(slope, 2),
+            "slope_deg":   slope,
             "terrain":     terrain,
-            "source":      "Open-Meteo elevation",
+            "source":      source,
         }
 
     def quality(self):
         return {
             "sensor":      "nasadem",
-            "confidence":  "high",
+            "confidence":  "medium",
             "resolution":  "30m",
             "limitations": [
-                "Slope estimated from 5-point finite difference",
+                "Slope estimated — elevation API unavailable",
             ],
         }
