@@ -1,7 +1,12 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+import os
+# Load from Render secret file or local .env
+for path in ['/etc/secrets/.env', '.env']:
+    if os.path.exists(path):
+        load_dotenv(path)
+        break
 
 class Settings:
 
