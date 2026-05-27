@@ -165,7 +165,9 @@ class ProfileBuilder:
         ecoc    = ecostress_confidence(
                       lst.get("celsius") if lst else None,
                       lst.get("granule_time") if lst else None)
-        parcelc = parcel_confidence(area_ha, parcel.get("crop") if parcel else None)
+        match_dist = parcel.get("_match_distance_m") if parcel else None
+        match_qual = parcel.get("_match_quality") if parcel else None
+        parcelc = parcel_confidence(area_ha, parcel.get("crop") if parcel else None, match_dist, match_qual)
         agree   = cross_sensor_agreement(
                       ndvi, smap_surf, surf,
                       s1_result.get("granule_count"),
@@ -256,6 +258,12 @@ class ProfileBuilder:
                 "size_class":         size_class,
                 "area_ha":            area_ha,
                 "confidence_penalty": penalty,
+                "match_distance_m":   parcel.get("_match_distance_m") if parcel else None,
+                "match_quality":      parcel.get("_match_quality") if parcel else None,
+                "match_warning":      (
+                    f"Nearest matched parcel {parcel.get('_match_distance_m')}m away — results may reflect nearby field"
+                    if parcel and parcel.get("_match_distance_m", 0) > 500 else None
+                ),
             },
             "confidence":    conf,
             "freshness":     fresh,

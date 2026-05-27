@@ -157,9 +157,24 @@ def ecostress_confidence(celsius, granule_time):
             "literature": "Hayes 2025: Thermal ET confirms moisture stress independently"}
 
 
-def parcel_confidence(area_ha, crop):
+def parcel_confidence(area_ha, crop, match_distance_m=None, match_quality=None):
     score = 10
     reasons = []
+
+    # Distance penalty — distant parcel match reduces reliability
+    if match_distance_m is not None:
+        if match_distance_m > 1000:
+            score -= 5
+            reasons.append(f"Parcel match {match_distance_m}m away — results likely reflect different field")
+        elif match_distance_m > 500:
+            score -= 3
+            reasons.append(f"Parcel match {match_distance_m}m away — spatial uncertainty high")
+        elif match_distance_m > 200:
+            score -= 1
+            reasons.append(f"Parcel match {match_distance_m}m away — minor spatial offset")
+        else:
+            reasons.append(f"Parcel match {match_distance_m}m — good spatial accuracy")
+
     if area_ha is None:
         score -= 4
         reasons.append("No parcel area — size penalty unknown")

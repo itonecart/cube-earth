@@ -34,13 +34,26 @@ class LPISClient:
             rows = r.json()
             if not rows:
                 return None
-            return min(
+            best = min(
                 rows,
                 key=lambda p: (
                     abs(p["centroid_lat"] - lat) +
                     abs(p["centroid_lng"] - lng)
                 )
             )
+            # Calculate distance in metres
+            import math
+            dlat = (best["centroid_lat"] - lat) * 111320
+            dlng = (best["centroid_lng"] - lng) * 111320 * math.cos(math.radians(lat))
+            dist_m = round(math.sqrt(dlat**2 + dlng**2))
+            best["_match_distance_m"] = dist_m
+            best["_match_quality"] = (
+                "exact"   if dist_m < 50   else
+                "close"   if dist_m < 200  else
+                "nearby"  if dist_m < 500  else
+                "distant"
+            )
+            return best
 
     async def get_commonage(self, lat, lng):
         async with httpx.AsyncClient() as client:
