@@ -114,30 +114,47 @@ class GEEExtractor(BaseExtractor):
         previous = series[-2] if len(series) >= 2 else None
         oldest = series[0]
 
+        import datetime
+
+        def trend_for_diff(diff):
+            if diff > 0.10: return "strong_increase"
+            if diff > 0.05: return "increasing"
+            if diff < -0.10: return "strong_decline"
+            if diff < -0.05: return "declining"
+            return "stable"
+
         # Short term trend (last 2 observations)
         short_diff = None
         short_trend = "stable"
         if previous:
             short_diff = round(latest["ndvi"] - previous["ndvi"], 4)
-            if short_diff > 0.05:
-                short_trend = "increasing"
-            elif short_diff < -0.05:
-                short_trend = "declining"
-            else:
-                short_trend = "stable"
+            short_trend = trend_for_diff(short_diff)
 
         # Long term trend (first vs last)
         long_diff = round(latest["ndvi"] - oldest["ndvi"], 4)
-        if long_diff > 0.10:
-            long_trend = "strong_increase"
-        elif long_diff > 0.05:
-            long_trend = "increasing"
-        elif long_diff < -0.10:
-            long_trend = "strong_decline"
-        elif long_diff < -0.05:
-            long_trend = "declining"
-        else:
-            long_trend = "stable"
+        long_trend = trend_for_diff(long_diff)
+
+        # 7-day trend
+        now = datetime.datetime.utcnow()
+        cutoff_7d = (now - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
+        cutoff_30d = (now - datetime.timedelta(days=30)).strftime("%Y-%m-%d")
+        recent_7d = [s for s in series if s["date"] >= cutoff_7d]
+        recent_30d = [s for s in series if s["date"] >= cutoff_30d]
+
+        trend_7d = "insufficient_data"
+        diff_7d = None
+        if len(recent_7d) >= 2:
+            diff_7d = round(recent_7d[-1]["ndvi"] - recent_7d[0]["ndvi"], 4)
+            trend_7d = trend_for_diff(diff_7d)
+        elif len(recent_7d) == 1 and previous:
+            diff_7d = round(recent_7d[0]["ndvi"] - previous["ndvi"], 4)
+            trend_7d = trend_for_diff(diff_7d)
+
+        trend_30d = "insufficient_data"
+        diff_30d = None
+        if len(recent_30d) >= 2:
+            diff_30d = round(recent_30d[-1]["ndvi"] - recent_30d[0]["ndvi"], 4)
+            trend_30d = trend_for_diff(diff_30d)
 
         # Trend arrows
         arrows = {
@@ -169,6 +186,10 @@ class GEEExtractor(BaseExtractor):
             "trend_arrow": arrows.get(long_trend, "→"),
             "trend_label": trend_labels.get(long_trend, "Stable"),
             "count": len(series),
+            "trend_7d": trend_7d,
+            "diff_7d": diff_7d,
+            "trend_30d": trend_30d,
+            "diff_30d": diff_30d,
             "source": raw.get("source"),
         }
 

@@ -232,10 +232,20 @@ class ProfileBuilder:
                 "long_trend":   gee_result.get("long_trend"),
                 "short_diff":   gee_result.get("short_diff"),
                 "long_diff":    gee_result.get("long_diff"),
+                "trend_7d":     gee_result.get("trend_7d"),
+                "diff_7d":      gee_result.get("diff_7d"),
+                "trend_30d":    gee_result.get("trend_30d"),
+                "diff_30d":     gee_result.get("diff_30d"),
                 "latest_ndvi":  gee_result.get("latest", {}).get("ndvi") if gee_result.get("latest") else None,
                 "latest_date":  gee_result.get("latest", {}).get("date") if gee_result.get("latest") else None,
                 "series":       gee_result.get("series", []),
                 "count":        gee_result.get("count", 0),
+                "parcel_mismatch": (
+                    parcel is not None and
+                    parcel.get("grassland") and
+                    gee_result.get("latest", {}).get("ndvi", 1) is not None and
+                    gee_result.get("latest", {}).get("ndvi", 1) < 0.25
+                ),
                 "source":       "GEE Sentinel-2 SR 10m",
             },
             "thermal": lst if lst and lst.get("available") else {
