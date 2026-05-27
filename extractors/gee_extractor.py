@@ -91,6 +91,14 @@ class GEEExtractor(BaseExtractor):
 
             # Sort by date ascending
             series.sort(key=lambda x: x["date"])
+            
+            # Deduplicate by date — keep highest NDVI per date
+            seen = {}
+            for s in series:
+                if s["date"] not in seen or s["ndvi"] > seen[s["date"]]["ndvi"]:
+                    seen[s["date"]] = s
+            series = list(seen.values())
+            series.sort(key=lambda x: x["date"])
 
             return {
                 "available": True,
