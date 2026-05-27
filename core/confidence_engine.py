@@ -259,7 +259,7 @@ def cross_sensor_agreement(ndvi, smap_surf, era5_surf, s1_granules, rvi=None, vv
         if rvi is not None and vv_db is not None and vh_db is not None:
             score += 0.5
             agreements.append(
-                f"SAR VV/VH extracted — VV {vv_db:.1f}dB  VH {vh_db:.1f}dB  RVI {rvi:.2f}"
+                f"SAR signal confirmed — VV {vv_db:.1f} dB  VH {vh_db:.1f} dB  RVI {rvi:.2f}"
             )
             if ndvi is not None and abs(rvi - ndvi) < 0.20:
                 score += 0.5
