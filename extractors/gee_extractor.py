@@ -2,13 +2,20 @@
 Google Earth Engine extractor for Cube Earth.
 Provides NDVI time series and trend calculation.
 """
-import ee
 import datetime
 from extractors.base_extractor import BaseExtractor
 
 
 def init_gee(project='ireland-mrv-prototype'):
     import os, json
+    try:
+        import ee
+    except ImportError:
+        import subprocess, sys
+        subprocess.check_call([sys.executable, "-m", "pip", "install",
+                               "earthengine-api==1.7.28", "--quiet",
+                               "--break-system-packages"])
+        import ee
     try:
         # Try env var first (Render production)
         creds_json = os.getenv("GEE_CREDENTIALS")
@@ -43,6 +50,7 @@ class GEEExtractor(BaseExtractor):
             return {"available": False, "error": "GEE not initialized"}
 
         try:
+            import ee
             point = ee.Geometry.Point([lng, lat])
 
             # Get last 90 days of S2

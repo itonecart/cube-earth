@@ -94,15 +94,17 @@ class ProfileBuilder:
         sar_result  = await extract_s1_backscatter(lat, lng, start, end)
         eco_result = self.ecostress.parse(eco_raw)
 
-        # GEE NDVI time series
+        # GEE NDVI time series — optional, memory-safe
+        gee_raw = {"available": False, "error": "skipped"}
         try:
-            import concurrent.futures
-            loop = asyncio.get_event_loop()
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                gee_raw = await loop.run_in_executor(
+            import concurrent.futures, asyncio as _asyncio
+            loop = _asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = loop.run_in_executor(
                     pool,
-                    lambda: asyncio.run(self.gee.extract(lat, lng))
+                    lambda: _asyncio.run(self.gee.extract(lat, lng))
                 )
+                gee_raw = await _asyncio.wait_for(future, timeout=25)
         except Exception as _ge:
             gee_raw = {"available": False, "error": str(_ge)}
         gee_result = self.gee.parse(gee_raw)
