@@ -13,8 +13,7 @@ def init_gee(project='ireland-mrv-prototype'):
     except ImportError:
         import subprocess, sys
         subprocess.check_call([sys.executable, "-m", "pip", "install",
-                               "earthengine-api==1.7.28", "--quiet",
-                               "--break-system-packages"])
+                               "earthengine-api==1.7.28", "--quiet"])
         import ee
     try:
         # Try env var first (Render production)

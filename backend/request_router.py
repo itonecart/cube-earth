@@ -21,7 +21,7 @@ class ProfileRequest(BaseModel):
     year: int = 2026
 
 
-@app.get("/health")
+@app.api_route("/health", methods=["GET", "HEAD"])
 async def health():
     return {"status": "ok", "service": "cube-earth"}
 
