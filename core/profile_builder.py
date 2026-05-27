@@ -1,6 +1,7 @@
 import asyncio
 from datetime import datetime, timezone
 from extractors.era5_extractor import ERA5Extractor
+from extractors.gee_extractor import GEEExtractor
 from extractors.nasadem_extractor import NASADEMExtractor
 from extractors.hls_extractor import HLSExtractor
 from extractors.sentinel1_extractor import Sentinel1Extractor
@@ -56,6 +57,7 @@ class ProfileBuilder:
 
     def __init__(self):
         self.era5      = ERA5Extractor()
+        self.gee       = GEEExtractor()
         self.nasadem   = NASADEMExtractor()
         self.hls       = HLSExtractor()
         self.sentinel1 = Sentinel1Extractor()
@@ -91,6 +93,19 @@ class ProfileBuilder:
         eco_raw = await self.ecostress.extract(lat, lng, start, end)
         sar_result  = await extract_s1_backscatter(lat, lng, start, end)
         eco_result = self.ecostress.parse(eco_raw)
+
+        # GEE NDVI time series
+        try:
+            import concurrent.futures
+            loop = asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                gee_raw = await loop.run_in_executor(
+                    pool,
+                    lambda: asyncio.run(self.gee.extract(lat, lng))
+                )
+        except Exception as _ge:
+            gee_raw = {"available": False, "error": str(_ge)}
+        gee_result = self.gee.parse(gee_raw)
 
         indices = None
         if best and hls_result.get("available"):
@@ -208,6 +223,20 @@ class ProfileBuilder:
                 "granule_date": best.get("time_start") if best else None,
                 "cloud_cover":  best.get("cloud_cover") if best else None,
                 "source":       "HLS Sentinel-2 30m",
+            },
+            "vegetation_trend": {
+                "available":    gee_result.get("available", False),
+                "trend_arrow":  gee_result.get("trend_arrow"),
+                "trend_label":  gee_result.get("trend_label"),
+                "short_trend":  gee_result.get("short_trend"),
+                "long_trend":   gee_result.get("long_trend"),
+                "short_diff":   gee_result.get("short_diff"),
+                "long_diff":    gee_result.get("long_diff"),
+                "latest_ndvi":  gee_result.get("latest", {}).get("ndvi") if gee_result.get("latest") else None,
+                "latest_date":  gee_result.get("latest", {}).get("date") if gee_result.get("latest") else None,
+                "series":       gee_result.get("series", []),
+                "count":        gee_result.get("count", 0),
+                "source":       "GEE Sentinel-2 SR 10m",
             },
             "thermal": lst if lst and lst.get("available") else {
                 "available": False,

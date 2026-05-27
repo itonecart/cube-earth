@@ -16,6 +16,8 @@ class Settings:
     # Supabase
     SUPABASE_URL = os.getenv("SUPABASE_URL")
     SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    GEE_CREDENTIALS = os.getenv("GEE_CREDENTIALS")
+    GEE_PROJECT = os.getenv("GEE_PROJECT", "ireland-mrv-prototype")
 
     # Ireland bounding box
     IRELAND_BBOX = (-10.5, 51.3, -6.0, 55.4)
