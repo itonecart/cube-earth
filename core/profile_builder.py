@@ -6,6 +6,7 @@ from extractors.gee_optical_extractor import GEEOpticalExtractor
 from extractors.gee_seasonal_extractor import GEESeasonalExtractor
 from extractors.gee_sar_extractor import GEESARExtractor
 from extractors.gee_thermal_extractor import GEEThermalExtractor
+from extractors.gee_modis_extractor import GEEMODISExtractor
 from extractors.nasadem_extractor import NASADEMExtractor
 from extractors.hls_extractor import HLSExtractor
 from extractors.sentinel1_extractor import Sentinel1Extractor
@@ -67,6 +68,7 @@ class ProfileBuilder:
         self.gee_seasonal = GEESeasonalExtractor()
         self.gee_sar     = GEESARExtractor()
         self.gee_thermal = GEEThermalExtractor()
+        self.gee_modis   = GEEMODISExtractor()
         self.nasadem   = NASADEMExtractor()
         self.hls       = HLSExtractor()
         self.sentinel1 = Sentinel1Extractor()
@@ -157,6 +159,19 @@ class ProfileBuilder:
         except Exception as _gt:
             gee_thermal_raw = {"available": False, "error": str(_gt)}
         gee_thermal = self.gee_thermal.parse(gee_thermal_raw)
+
+        # MODIS — daily LST + NDVI history
+        gee_modis_raw = {"available": False}
+        try:
+            loop = asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = loop.run_in_executor(
+                    pool, lambda: asyncio.run(self.gee_modis.extract(lat, lng, days=14))
+                )
+                gee_modis_raw = await asyncio.wait_for(future, timeout=20)
+        except Exception as _gm:
+            gee_modis_raw = {"available": False, "error": str(_gm)}
+        gee_modis = self.gee_modis.parse(gee_modis_raw)
         eco_raw = await self.ecostress.extract(lat, lng, start, end)
         sar_result  = await extract_s1_backscatter(lat, lng, start, end)
         eco_result = self.ecostress.parse(eco_raw)
@@ -398,6 +413,16 @@ class ProfileBuilder:
                 "source":             gee_sar.get("source") or (sar_result.get("source") if sar_result else None),
                 "note":               gee_sar.get("note") or (sar_result.get("note") if sar_result else None),
                 "gee_sar":            gee_sar.get("available", False),
+            },
+            "modis": {
+                "available":    gee_modis.get("available", False),
+                "lst_celsius":  gee_modis.get("lst_celsius"),
+                "lst_date":     gee_modis.get("lst_date"),
+                "lst_age_days": gee_modis.get("lst_age_days"),
+                "lst_series":   gee_modis.get("lst_series", []),
+                "modis_ndvi":   gee_modis.get("modis_ndvi"),
+                "modis_ndvi_date": gee_modis.get("modis_ndvi_date"),
+                "source":       gee_modis.get("source", "MODIS Terra"),
             },
             "soil_moisture": {
                 "smap": smap_result,
