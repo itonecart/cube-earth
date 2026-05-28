@@ -131,10 +131,11 @@ def detect_crop_stage(crop_str, ndvi, month=None, trend=None, events=None):
     if month is None:
         month = datetime.datetime.now().month
 
-    # EO evidence override — trust observations over calendar
-    if events:
+    # EO evidence override — only when NDVI confirms disturbance
+    if events and ndvi < 0.35:
         event_types = [e.get("type") for e in events]
-        if "harvest_or_cut" in event_types or "bare_soil" in event_types:
+        high_conf = [e for e in events if e.get("confidence") == "high"]
+        if ("harvest_or_cut" in event_types or "bare_soil" in event_types) and high_conf:
             return {
                 "stage":    "post_disturbance",
                 "label":    "Post-disturbance Field State",
