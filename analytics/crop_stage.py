@@ -6,6 +6,15 @@ import datetime
 
 
 CROP_CALENDARS = {
+    "maize": [
+        {"stage": "soil_preparation", "months": [3, 4],      "ndvi_range": (0.05, 0.20)},
+        {"stage": "emergence",        "months": [4, 5],      "ndvi_range": (0.10, 0.30)},
+        {"stage": "vegetative",       "months": [5, 6],      "ndvi_range": (0.30, 0.70)},
+        {"stage": "canopy_closure",   "months": [6, 7],      "ndvi_range": (0.70, 0.95)},
+        {"stage": "peak_vegetative",  "months": [7, 8],      "ndvi_range": (0.75, 0.95)},
+        {"stage": "senescence",       "months": [9, 10],     "ndvi_range": (0.20, 0.70)},
+        {"stage": "harvest",          "months": [10, 11],    "ndvi_range": (0.05, 0.30)},
+    ],
     "arable": [
         {"stage": "soil_preparation", "months": [3, 4],      "ndvi_range": (0.05, 0.25)},
         {"stage": "emergence",        "months": [4, 5],      "ndvi_range": (0.10, 0.40)},
@@ -51,6 +60,7 @@ CROP_CALENDARS = {
 
 STAGE_LABELS = {
     "soil_preparation": "Soil Preparation",
+    "peak_vegetative":  "Peak Vegetative Development",
     "canopy_closure":   "Canopy Closure",
     "emergence":       "Crop Emergence",
     "vegetative":      "Vegetative Growth",
@@ -71,6 +81,7 @@ STAGE_LABELS = {
 
 STAGE_ADVICE = {
     "soil_preparation": "Field being prepared — avoid heavy machinery on wet soil",
+    "peak_vegetative": "Dense canopy development — maintain moisture and monitor nutrient demand",
     "canopy_closure":   "Full canopy — monitor for disease and nutrient stress",
     "emergence":       "Monitor for establishment — soil moisture critical",
     "vegetative":      "N uptake phase — monitor for deficiency",
@@ -105,7 +116,7 @@ def get_crop_calendar_key(crop_str):
     if "potato" in c or "beet" in c or "vegetable" in c:
         return "arable"
     if "maize" in c or "corn" in c:
-        return "arable"
+        return "maize"
     return None
 
 
