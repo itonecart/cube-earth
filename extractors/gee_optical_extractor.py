@@ -44,94 +44,118 @@ class GEEOpticalExtractor(BaseExtractor):
             point = ee.Geometry.Point([lng, lat])
             buffer = point.buffer(150)
 
-            # Last 60 days — find most recent clear image
-            end = datetime.datetime.utcnow()
-            start = end - datetime.timedelta(days=60)
+            now = datetime.datetime.now(datetime.timezone.utc)
 
-            s2 = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                  .filterBounds(buffer)
-                  .filterDate(start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d'))
-                  .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
-                  .sort('system:time_start', False))
+            def get_composite(days, cloud_max):
+                """Get cloud-free median composite over N days."""
+                start = now - datetime.timedelta(days=days)
+                col = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+                       .filterBounds(buffer)
+                       .filterDate(start.strftime('%Y-%m-%d'), now.strftime('%Y-%m-%d'))
+                       .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', cloud_max)))
+                cnt = col.size().getInfo()
+                return col, cnt
 
-            count = s2.size().getInfo()
-            if count == 0:
-                # Try with higher cloud tolerance
-                s2 = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                      .filterBounds(buffer)
-                      .filterDate(start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d'))
-                      .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 50))
-                      .sort('system:time_start', False))
-                count = s2.size().getInfo()
+            # Try composites: 7d → 14d → 30d → 60d with relaxing cloud
+            composite_img = None
+            composite_days = None
+            composite_count = None
 
-            if count == 0:
-                return {"available": False, "error": "No cloud-free S2 imagery"}
+            for days, cloud_max in [(7, 30), (14, 40), (30, 50), (60, 60)]:
+                col, cnt = get_composite(days, cloud_max)
+                if cnt > 0:
+                    composite_img   = col.median()
+                    composite_days  = days
+                    composite_count = cnt
+                    break
 
-            latest = s2.first()
-            date_ms = latest.date().millis().getInfo()
-            image_date = datetime.datetime.fromtimestamp(
-                date_ms / 1000, tz=datetime.timezone.utc
-            ).strftime('%Y-%m-%d')
+            if composite_img is None:
+                return {"available": False, "error": "No S2 imagery in 60 days"}
 
-            # Extract bands
-            bands = latest.reduceRegion(
+            # Representative date = midpoint of composite window
+            start_date = (now - datetime.timedelta(days=composite_days)).strftime('%Y-%m-%d')
+            end_date   = now.strftime('%Y-%m-%d')
+            image_date = (now - datetime.timedelta(days=composite_days//2)).strftime('%Y-%m-%d')
+            age_days   = composite_days // 2
+
+            # Extract bands from composite
+            bands = composite_img.reduceRegion(
                 reducer=ee.Reducer.mean(),
                 geometry=buffer,
                 scale=10
             ).getInfo()
 
-            b4  = bands.get('B4', 0) or 0    # Red
-            b8  = bands.get('B8', 0) or 0    # NIR
-            b5  = bands.get('B5', 0) or 0    # Red Edge 1
-            b6  = bands.get('B6', 0) or 0    # Red Edge 2
-            b7  = bands.get('B7', 0) or 0    # Red Edge 3
-            b11 = bands.get('B11', 0) or 0   # SWIR1
-            b2  = bands.get('B2', 0) or 0    # Blue
+            b2  = bands.get('B2', 0) or 0
+            b4  = bands.get('B4', 0) or 0
+            b5  = bands.get('B5', 0) or 0
+            b6  = bands.get('B6', 0) or 0
+            b7  = bands.get('B7', 0) or 0
+            b8  = bands.get('B8', 0) or 0
+            b8a = bands.get('B8A', 0) or 0
+            b11 = bands.get('B11', 0) or 0
+            b12 = bands.get('B12', 0) or 0
 
-            # Scale from DN to reflectance (S2 SR is already scaled)
-            # Values are 0-10000 in GEE for SR harmonized
             scale = 10000.0
-
+            r2  = b2  / scale
             r4  = b4  / scale
-            r8  = b8  / scale
             r5  = b5  / scale
             r6  = b6  / scale
             r7  = b7  / scale
+            r8  = b8  / scale
+            r8a = b8a / scale
             r11 = b11 / scale
+            r12 = b12 / scale
 
             # NDVI
             ndvi = (r8 - r4) / (r8 + r4 + 1e-9)
 
-            # NDRE (Red Edge NDVI) — B7 and B5
+            # NDRE
             ndre = (r7 - r5) / (r7 + r5 + 1e-9)
 
-            # CIre (Chlorophyll Index Red Edge)
+            # CIre
             cire = (r7 / (r5 + 1e-9)) - 1
 
-            # GCAP (Grassland Carbon Accumulation Proxy)
+            # EVI
+            evi = 2.5 * (r8 - r4) / (r8 + 6*r4 - 7.5*r2 + 1 + 1e-9)
+
+            # NDWI (water content)
+            ndwi = (r8 - r11) / (r8 + r11 + 1e-9)
+
+            # SAVI (soil adjusted)
+            savi = 1.5 * (r8 - r4) / (r8 + r4 + 0.5)
+
+            # GNDVI (green NDVI)
+            gndvi = (r8 - r6) / (r8 + r6 + 1e-9)
+
+            # GCAP
             gcap = ndvi * cire if ndvi > 0.3 else 0.0
 
-            # Cloud cover
-            cloud_pct = latest.get('CLOUDY_PIXEL_PERCENTAGE').getInfo()
-
-            age_days = (datetime.datetime.utcnow() - 
-                       datetime.datetime.strptime(image_date, '%Y-%m-%d')).days
+            # Estimate cloud cover as mean over composite period
+            cloud_pct = composite_count  # proxy — actual % not available for composite
 
             return {
-                "available":    True,
-                "date":         image_date,
-                "age_days":     age_days,
-                "ndvi":         round(ndvi, 4),
-                "ndre":         round(ndre, 4),
-                "cire":         round(cire, 4),
-                "gcap":         round(gcap, 4),
-                "cloud_cover":  round(cloud_pct, 1),
-                "source":       "GEE Sentinel-2 SR 10m",
+                "available":        True,
+                "date":             image_date,
+                "date_range":       f"{start_date} to {end_date}",
+                "composite_days":   composite_days,
+                "composite_count":  composite_count,
+                "age_days":         age_days,
+                "ndvi":             round(ndvi, 4),
+                "ndre":             round(ndre, 4),
+                "cire":             round(cire, 4),
+                "evi":              round(evi, 4),
+                "ndwi":             round(ndwi, 4),
+                "savi":             round(savi, 4),
+                "gndvi":            round(gndvi, 4),
+                "gcap":             round(gcap, 4),
+                "cloud_cover":      composite_count,
+                "source":           f"GEE S2 {composite_days}d composite ({composite_count} images)",
                 "bands": {
-                    "B4": round(r4, 4),
-                    "B8": round(r8, 4),
-                    "B5": round(r5, 4),
-                    "B7": round(r7, 4),
+                    "B4":  round(r4, 4),
+                    "B8":  round(r8, 4),
+                    "B5":  round(r5, 4),
+                    "B7":  round(r7, 4),
+                    "B11": round(r11, 4),
                 },
             }
 

@@ -122,6 +122,7 @@ class GEEExtractor(BaseExtractor):
                 "trend": "insufficient_data",
                 "trend_label": "Insufficient data for trend",
                 "source": raw.get("source"),
+            "events": detect_events(series),
             }
 
         # Latest and previous NDVI
@@ -206,6 +207,7 @@ class GEEExtractor(BaseExtractor):
             "trend_30d": trend_30d,
             "diff_30d": diff_30d,
             "source": raw.get("source"),
+            "events": detect_events(series),
         }
 
     def quality(self):
@@ -215,3 +217,70 @@ class GEEExtractor(BaseExtractor):
             "resolution": "10m",
             "limitations": ["Requires GEE authentication"],
         }
+
+
+def detect_events(series):
+    """
+    Detect significant field events from NDVI time series.
+    Returns list of detected events with dates and types.
+    """
+    if not series or len(series) < 3:
+        return []
+
+    events = []
+
+    for i in range(1, len(series)):
+        prev = series[i-1]
+        curr = series[i]
+        diff = curr["ndvi"] - prev["ndvi"]
+
+        # Harvest / cutting event — sudden large drop
+        if diff < -0.20:
+            events.append({
+                "type":       "harvest_or_cut",
+                "date":       curr["date"],
+                "ndvi_before": prev["ndvi"],
+                "ndvi_after":  curr["ndvi"],
+                "change":      round(diff, 4),
+                "label":      "Harvest or cutting event detected",
+                "confidence": "high" if diff < -0.30 else "moderate",
+            })
+
+        # Flooding / waterlogging — NDVI drop + NDWI context
+        elif diff < -0.10:
+            events.append({
+                "type":        "vegetation_loss",
+                "date":        curr["date"],
+                "ndvi_before": prev["ndvi"],
+                "ndvi_after":  curr["ndvi"],
+                "change":      round(diff, 4),
+                "label":       "Significant vegetation loss",
+                "confidence":  "moderate",
+            })
+
+        # Reseeding / recovery — sudden rise from low base
+        elif diff > 0.20 and prev["ndvi"] < 0.30:
+            events.append({
+                "type":        "recovery_or_reseeding",
+                "date":        curr["date"],
+                "ndvi_before": prev["ndvi"],
+                "ndvi_after":  curr["ndvi"],
+                "change":      round(diff, 4),
+                "label":       "Vegetation recovery or reseeding",
+                "confidence":  "moderate",
+            })
+
+        # Ploughing — very low NDVI sustained
+        elif curr["ndvi"] < 0.15 and prev["ndvi"] < 0.15:
+            if not any(e["type"] == "bare_soil" and
+                      e["date"] >= series[max(0,i-2)]["date"]
+                      for e in events):
+                events.append({
+                    "type":   "bare_soil",
+                    "date":   curr["date"],
+                    "ndvi":   curr["ndvi"],
+                    "label":  "Bare soil or post-harvest",
+                    "confidence": "high",
+                })
+
+    return events

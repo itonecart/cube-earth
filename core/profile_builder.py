@@ -299,6 +299,7 @@ class ProfileBuilder:
                     gee_result.get("latest", {}).get("ndvi", 1) < 0.25
                 ),
                 "source":       "GEE Sentinel-2 SR 10m",
+                "events":       gee_result.get("events", []),
             },
             "thermal": lst if lst and lst.get("available") else {
                 "available": False,
