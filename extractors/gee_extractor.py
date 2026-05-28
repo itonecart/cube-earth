@@ -91,7 +91,7 @@ class GEEExtractor(BaseExtractor):
 
             # Sort by date ascending
             series.sort(key=lambda x: x["date"])
-            
+
             # Deduplicate by date — keep highest NDVI per date
             seen = {}
             for s in series:
@@ -99,6 +99,20 @@ class GEEExtractor(BaseExtractor):
                     seen[s["date"]] = s
             series = list(seen.values())
             series.sort(key=lambda x: x["date"])
+
+            # Filter cloud/snow artifacts — single low outliers between high values
+            filtered = []
+            for i, s in enumerate(series):
+                if i == 0 or i == len(series) - 1:
+                    filtered.append(s)
+                    continue
+                prev_ndvi = series[i-1]["ndvi"]
+                next_ndvi = series[i+1]["ndvi"]
+                # If current is much lower than both neighbours — likely artifact
+                if s["ndvi"] < prev_ndvi - 0.25 and s["ndvi"] < next_ndvi - 0.25:
+                    continue  # Skip artifact
+                filtered.append(s)
+            series = filtered
 
             return {
                 "available": True,
