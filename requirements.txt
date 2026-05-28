@@ -18,3 +18,4 @@ python-dotenv==1.0.1
 pyyaml==6.0.2
 python-dateutil==2.9.0
 structlog==24.4.0
+earthengine-api==1.7.28

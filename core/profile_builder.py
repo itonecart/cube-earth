@@ -16,6 +16,7 @@ from parsers.hls_parser import compute_indices
 from parsers.sar_parser import extract_s1_backscatter
 from parsers.ecostress_parser import extract_lst
 from parcel.lpis import LPISClient
+from parcel.dafm_api import get_parcel_at_point
 from parcel.geometry import parcel_size_class, confidence_penalty
 from analytics.soil_moisture import classify_surface, classify_rootzone, classify_drainage, n_mineralisation_risk
 from analytics.drought import drought_stress_index, waterlogging_probability
