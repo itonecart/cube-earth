@@ -4,6 +4,8 @@ from extractors.era5_extractor import ERA5Extractor
 from extractors.gee_extractor import GEEExtractor
 from extractors.gee_optical_extractor import GEEOpticalExtractor
 from extractors.gee_seasonal_extractor import GEESeasonalExtractor
+from extractors.gee_sar_extractor import GEESARExtractor
+from extractors.gee_thermal_extractor import GEEThermalExtractor
 from extractors.nasadem_extractor import NASADEMExtractor
 from extractors.hls_extractor import HLSExtractor
 from extractors.sentinel1_extractor import Sentinel1Extractor
@@ -63,6 +65,8 @@ class ProfileBuilder:
         self.gee       = GEEExtractor()
         self.gee_optical = GEEOpticalExtractor()
         self.gee_seasonal = GEESeasonalExtractor()
+        self.gee_sar     = GEESARExtractor()
+        self.gee_thermal = GEEThermalExtractor()
         self.nasadem   = NASADEMExtractor()
         self.hls       = HLSExtractor()
         self.sentinel1 = Sentinel1Extractor()
@@ -127,6 +131,32 @@ class ProfileBuilder:
             gee_seasonal_raw = {"available": False, "error": str(_gs)}
         _current_ndvi = gee_optical.get("ndvi")
         gee_seasonal = self.gee_seasonal.parse(gee_seasonal_raw, current_ndvi=_current_ndvi)
+
+        # GEE SAR — replaces CDSE
+        gee_sar_raw = {"available": False}
+        try:
+            loop = asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = loop.run_in_executor(
+                    pool, lambda: asyncio.run(self.gee_sar.extract(lat, lng))
+                )
+                gee_sar_raw = await asyncio.wait_for(future, timeout=20)
+        except Exception as _gs:
+            gee_sar_raw = {"available": False, "error": str(_gs)}
+        gee_sar = self.gee_sar.parse(gee_sar_raw)
+
+        # GEE Thermal — Landsat fallback for ECOSTRESS
+        gee_thermal_raw = {"available": False}
+        try:
+            loop = asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = loop.run_in_executor(
+                    pool, lambda: asyncio.run(self.gee_thermal.extract(lat, lng))
+                )
+                gee_thermal_raw = await asyncio.wait_for(future, timeout=20)
+        except Exception as _gt:
+            gee_thermal_raw = {"available": False, "error": str(_gt)}
+        gee_thermal = self.gee_thermal.parse(gee_thermal_raw)
         eco_raw = await self.ecostress.extract(lat, lng, start, end)
         sar_result  = await extract_s1_backscatter(lat, lng, start, end)
         eco_result = self.ecostress.parse(eco_raw)
@@ -337,23 +367,26 @@ class ProfileBuilder:
                     "yearly_ndvi":   gee_seasonal.get("yearly_ndvi", {}),
                 },
             },
-            "thermal": lst if lst and lst.get("available") else {
-                "available": False,
-                "source": "ECOSTRESS",
-            },
+            "thermal": lst if lst and lst.get("available") else (
+                {**gee_thermal, "source": gee_thermal.get("source", "GEE Landsat Thermal"),
+                 "lst_celsius": gee_thermal.get("lst_celsius"),
+                 "fallback": "landsat"} if gee_thermal.get("available") else {
+                "available": False, "source": "ECOSTRESS/Landsat unavailable"}
+            ),
             "sar": {
-                "available":        sar_result.get("available") if sar_result else False,
-                "vv_db":            sar_result.get("vv_db") if sar_result else None,
-                "vh_db":            sar_result.get("vh_db") if sar_result else None,
-                "rvi":              sar_result.get("rvi") if sar_result else None,
-                "rvi_interpretation": sar_result.get("rvi_interpretation") if sar_result else None,
-                "canopy_wetness":   sar_result.get("canopy_wetness") if sar_result else None,
-                "acquisitions":     sar_result.get("acquisitions") if sar_result else None,
-                "calibration":      sar_result.get("calibration") if sar_result else None,
-                "speckle_filter":   sar_result.get("speckle_filter") if sar_result else None,
-                "granule_count":    s1_result.get("granule_count"),
-                "source":           sar_result.get("source") if sar_result else s1_result.get("source"),
-                "note":             sar_result.get("note") if sar_result else None,
+                "available":          gee_sar.get("available") or (sar_result.get("available") if sar_result else False),
+                "vv_db":              gee_sar.get("vv_db") or (sar_result.get("vv_db") if sar_result else None),
+                "vh_db":              gee_sar.get("vh_db") or (sar_result.get("vh_db") if sar_result else None),
+                "rvi":                gee_sar.get("rvi") or (sar_result.get("rvi") if sar_result else None),
+                "rvi_interpretation": gee_sar.get("rvi_interpretation") or (sar_result.get("rvi_interpretation") if sar_result else None),
+                "canopy_wetness":     sar_result.get("canopy_wetness") if sar_result else None,
+                "acquisitions":       gee_sar.get("acquisitions") or (sar_result.get("acquisitions") if sar_result else None),
+                "calibration":        gee_sar.get("calibration") or (sar_result.get("calibration") if sar_result else None),
+                "speckle_filter":     gee_sar.get("speckle_filter") or (sar_result.get("speckle_filter") if sar_result else None),
+                "granule_count":      gee_sar.get("acquisitions") or s1_result.get("granule_count"),
+                "source":             gee_sar.get("source") or (sar_result.get("source") if sar_result else None),
+                "note":               gee_sar.get("note") or (sar_result.get("note") if sar_result else None),
+                "gee_sar":            gee_sar.get("available", False),
             },
             "soil_moisture": {
                 "smap": smap_result,

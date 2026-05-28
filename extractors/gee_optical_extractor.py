@@ -70,7 +70,56 @@ class GEEOpticalExtractor(BaseExtractor):
                     break
 
             if composite_img is None:
-                return {"available": False, "error": "No S2 imagery in 60 days"}
+                # Fallback to Landsat 8/9
+                try:
+                    l89 = (ee.ImageCollection('LANDSAT/LC09/C02/T1_L2')
+                           .merge(ee.ImageCollection('LANDSAT/LC08/C02/T1_L2'))
+                           .filterBounds(buffer)
+                           .filterDate((now - datetime.timedelta(days=90)).strftime('%Y-%m-%d'),
+                                       now.strftime('%Y-%m-%d'))
+                           .filter(ee.Filter.lt('CLOUD_COVER', 60))
+                           .sort('system:time_start', False))
+                    l_count = l89.size().getInfo()
+                    if l_count > 0:
+                        composite_img   = l89.limit(3).median()
+                        composite_days  = 60
+                        composite_count = l_count
+                        # Landsat band mapping
+                        bands = composite_img.reduceRegion(
+                            reducer=ee.Reducer.mean(),
+                            geometry=buffer,
+                            scale=30
+                        ).getInfo()
+                        b4 = bands.get('SR_B4') or 0
+                        b5 = bands.get('SR_B5') or 0
+                        b6 = bands.get('SR_B6') or 0
+                        r4 = b4 * 0.0000275 - 0.2
+                        r5 = b5 * 0.0000275 - 0.2
+                        r6 = b6 * 0.0000275 - 0.2
+                        ndvi = (r5 - r4) / (r5 + r4 + 1e-9)
+                        ndwi = (r5 - r6) / (r5 + r6 + 1e-9)
+                        evi  = 2.5 * (r5 - r4) / (r5 + 6*r4 - 7.5*0.03 + 1 + 1e-9)
+                        return {
+                            "available":       True,
+                            "date":            (now - datetime.timedelta(days=30)).strftime('%Y-%m-%d'),
+                            "date_range":      f"Landsat 60-day composite",
+                            "composite_days":  60,
+                            "composite_count": l_count,
+                            "age_days":        30,
+                            "ndvi":            round(ndvi, 4),
+                            "ndre":            None,
+                            "cire":            None,
+                            "evi":             round(evi, 4),
+                            "ndwi":            round(ndwi, 4),
+                            "savi":            None,
+                            "gndvi":           None,
+                            "gcap":            ndvi * 0.5 if ndvi > 0.3 else 0.0,
+                            "cloud_cover":     l_count,
+                            "source":          f"GEE Landsat 8/9 30m ({l_count} images)",
+                        }
+                except Exception as _le:
+                    pass
+                return {"available": False, "error": "No S2 or Landsat imagery in 90 days"}
 
             # Representative date = midpoint of composite window
             start_date = (now - datetime.timedelta(days=composite_days)).strftime('%Y-%m-%d')
