@@ -301,9 +301,8 @@ class ProfileBuilder:
                       s2_age=s2c.get("age_days"),
                       ecostress_available=(lst is not None and lst.get("available", False)) or gee_thermal.get("available", False))
         # Use Landsat thermal date if ECOSTRESS unavailable
-        thermal_date = (lst.get("granule_time") if lst and lst.get("available")
-                       else gee_thermal.get("latest_date") if gee_thermal.get("available")
-                       else None)
+        # Only use ECOSTRESS date if actually available
+        thermal_date = lst.get("granule_time") if lst and lst.get("available") else None
         # Add Landsat to freshness if available
         landsat_freshness_date = gee_thermal.get("latest_date") if gee_thermal.get("available") else None
         landsat_age = gee_thermal.get("age_days") if gee_thermal.get("available") else None
