@@ -132,11 +132,11 @@ class GEEExtractor(BaseExtractor):
 
         import datetime
 
-        def trend_for_diff(diff):
-            if diff > 0.10: return "strong_increase"
-            if diff > 0.05: return "increasing"
-            if diff < -0.10: return "strong_decline"
-            if diff < -0.05: return "declining"
+        def trend_for_diff(diff, ndvi_base=None):
+            if diff > 0.15: return "strong_increase"
+            if diff > 0.08: return "increasing"
+            if diff < -0.20: return "strong_decline"
+            if diff < -0.10: return "declining"
             return "stable"
 
         # Short term trend (last 2 observations)
