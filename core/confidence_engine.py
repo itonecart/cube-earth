@@ -290,7 +290,7 @@ def cross_sensor_agreement(ndvi, smap_surf, era5_surf, s1_granules, rvi=None, vv
             "agreements": agreements, "flags": flags, "note": note}
 
 
-def freshness_summary(s2_date, smap_date, s1_date, eco_date,
+def freshness_summary(s2_date, smap_date, s1_date, eco_date, landsat_date=None, landsat_age_days=None,
                       sar_latest=None, sar_acquisitions=None):
     def entry(name, date, resolution):
         age = _age_days(date)
@@ -324,7 +324,14 @@ def freshness_summary(s2_date, smap_date, s1_date, eco_date,
         "sentinel2":  entry("Sentinel-2", s2_date, "10m" if s2_date and len(str(s2_date))==10 else "30m"),
         "smap":       entry("SMAP L4",    smap_date, "9km"),
         "sentinel1":  sar_entry,
-        "ecostress":  entry("ECOSTRESS" if eco_date else "Landsat Thermal", eco_date, "70m" if eco_date else "30m"),
+        "ecostress":  entry("ECOSTRESS", eco_date, "70m") if eco_date else (
+            {"sensor": "Landsat Thermal", "date": str(landsat_date)[:10] if landsat_date else None,
+             "age_days": landsat_age_days, "age_label": _age_label(landsat_age_days),
+             "resolution": "30m",
+             "freshness": ("current" if landsat_age_days and landsat_age_days<=3
+                          else "recent" if landsat_age_days and landsat_age_days<=14
+                          else "stale" if landsat_age_days else "no_data")}
+            if landsat_date else entry("ECOSTRESS", None, "70m")),
         "era5":       {"sensor": "ERA5-Land", "age_label": "seasonal context",
                        "resolution": "9km", "freshness": "seasonal_context",
                        "note": "ERA5 provides seasonal trend — not parcel current moisture"},
