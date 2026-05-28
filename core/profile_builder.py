@@ -147,8 +147,8 @@ class ProfileBuilder:
                 gee_seasonal_raw = await asyncio.wait_for(future, timeout=12)
         except Exception as _gs:
             gee_seasonal_raw = {"available": False, "error": str(_gs)}
-        _current_ndvi = gee_optical.get("ndvi")
-        gee_seasonal = self.gee_seasonal.parse(gee_seasonal_raw, current_ndvi=_current_ndvi)
+        # Parse seasonal after ndvi is unified below
+        gee_seasonal_raw_stored = gee_seasonal_raw
 
         # GEE SAR — replaces CDSE
         gee_sar_raw = {"available": False}
@@ -269,6 +269,8 @@ class ProfileBuilder:
 
         # SINGLE OPTICAL AUTHORITY — all downstream uses unified variables
         # ndvi, ndre, cire, gcap, optical_source, optical_date, optical_age, optical_cloud
+        # Now parse seasonal with correct ndvi
+        gee_seasonal = self.gee_seasonal.parse(gee_seasonal_raw_stored, current_ndvi=ndvi)
 
         crop_str   = parcel.get("crop") if parcel else None
         crop_info  = classify_crop(crop_str)
