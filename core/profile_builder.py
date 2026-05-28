@@ -115,17 +115,17 @@ class ProfileBuilder:
         try:
             import concurrent.futures
             loop = asyncio.get_event_loop()
-            current_ndvi = gee_optical.get("ndvi") or (indices.get("ndvi") if indices else None)
+            _current_ndvi = gee_optical.get("ndvi")
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 future = loop.run_in_executor(
                     pool,
-                    lambda: asyncio.run(self.gee_seasonal.extract(lat, lng, current_ndvi))
+                    lambda: asyncio.run(self.gee_seasonal.extract(lat, lng, _current_ndvi))
                 )
                 gee_seasonal_raw = await asyncio.wait_for(future, timeout=30)
         except Exception as _gs:
             gee_seasonal_raw = {"available": False, "error": str(_gs)}
-        current_ndvi = gee_optical.get("ndvi") or (indices.get("ndvi") if indices else None)
-        gee_seasonal = self.gee_seasonal.parse(gee_seasonal_raw, current_ndvi=current_ndvi)
+        _current_ndvi = gee_optical.get("ndvi")
+        gee_seasonal = self.gee_seasonal.parse(gee_seasonal_raw, current_ndvi=_current_ndvi)
         eco_raw = await self.ecostress.extract(lat, lng, start, end)
         sar_result  = await extract_s1_backscatter(lat, lng, start, end)
         eco_result = self.ecostress.parse(eco_raw)
