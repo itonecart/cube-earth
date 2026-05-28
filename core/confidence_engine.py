@@ -275,9 +275,11 @@ def cross_sensor_agreement(ndvi, smap_surf, era5_surf, s1_granules, rvi=None, vv
             if ndvi is not None and abs(rvi - ndvi) < 0.20:
                 score += 0.5
                 agreements.append(
-                    f"SAR RVI {rvi:.2f} and optical NDVI {ndvi:.2f} — both independently support moderate vegetation condition"
+                    (f"SAR RVI {rvi:.2f} and optical NDVI {ndvi:.2f} — both independently support high vegetation condition"
+                     if ndvi > 0.65 else
+                     f"SAR RVI {rvi:.2f} and optical NDVI {ndvi:.2f} — both independently support moderate vegetation condition")
                     if not (s2_age and s2_age > 20) else
-                    f"SAR RVI {rvi:.2f} and optical NDVI {ndvi:.2f} — broadly consistent, though optical data {s2_age} days old increases vegetation state uncertainty"
+                    f"SAR RVI {rvi:.2f} and optical NDVI {ndvi:.2f} — broadly consistent, though optical data {s2_age} days old increases uncertainty"
                 )
         else:
             agreements.append(f"SAR granules available ({s1_granules}) — backscatter pending")
