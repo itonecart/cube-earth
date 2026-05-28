@@ -250,7 +250,7 @@ class ProfileBuilder:
                       s2_age=s2c.get("age_days"),
                       ecostress_available=lst is not None and lst.get("available", False))
         fresh   = freshness_summary(
-                      best.get("time_start") if best else None,
+                      optical_date if use_gee_optical else (best.get("time_start") if best else None),
                       smap_result.get("granule_date") if smap_result.get("available") else None,
                       s1_result.get("latest", {}).get("time_start") if s1_result.get("latest") else None,
                       lst.get("granule_time") if lst else None,

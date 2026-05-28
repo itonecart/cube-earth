@@ -310,7 +310,7 @@ def freshness_summary(s2_date, smap_date, s1_date, eco_date,
     }
 
     return {
-        "sentinel2":  entry("Sentinel-2", s2_date, "30m"),
+        "sentinel2":  entry("Sentinel-2", s2_date, "10m" if s2_date and len(str(s2_date))==10 else "30m"),
         "smap":       entry("SMAP L4",    smap_date, "9km"),
         "sentinel1":  sar_entry,
         "ecostress":  entry("ECOSTRESS",  eco_date, "70m"),
