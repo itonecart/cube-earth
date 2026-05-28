@@ -147,7 +147,7 @@ class ProfileBuilder:
                 gee_seasonal_raw = await asyncio.wait_for(future, timeout=12)
         except Exception as _gs:
             gee_seasonal_raw = {"available": False, "error": str(_gs)}
-        _current_ndvi = gee_optical.get("ndvi")
+        _current_ndvi = gee_optical.get("ndvi") or (indices.get("ndvi") if indices else None)
         gee_seasonal = self.gee_seasonal.parse(gee_seasonal_raw, current_ndvi=_current_ndvi)
 
         # GEE SAR — replaces CDSE
