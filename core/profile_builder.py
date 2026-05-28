@@ -96,7 +96,12 @@ class ProfileBuilder:
         # Try DAFM GeoAPI first — exact point-in-polygon
         try:
             dafm_parcel = await get_parcel_at_point(lat, lng)
-        except Exception:
+            if dafm_parcel:
+                print(f"DAFM API: {dafm_parcel.get('crop')} at {dafm_parcel.get('_match_distance_m')}m")
+            else:
+                print("DAFM API: no parcel found — falling back to Supabase")
+        except Exception as _de:
+            print(f"DAFM API error: {_de}")
             dafm_parcel = None
 
         # Use DAFM if available (exact match), fallback to Supabase
