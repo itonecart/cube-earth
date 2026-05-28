@@ -53,7 +53,7 @@ class GEESeasonalExtractor(BaseExtractor):
             end_md   = f"{(month):02d}-{min(28, day+15):02d}"
 
             yearly_ndvi = {}
-            for year in range(2019, now.year):
+            for year in range(now.year-4, now.year):
                 try:
                     start = f"{year}-{start_md}"
                     end   = f"{year}-{end_md}"

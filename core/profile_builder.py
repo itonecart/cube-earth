@@ -121,7 +121,7 @@ class ProfileBuilder:
                     pool,
                     lambda: asyncio.run(self.gee_seasonal.extract(lat, lng, _current_ndvi))
                 )
-                gee_seasonal_raw = await asyncio.wait_for(future, timeout=30)
+                gee_seasonal_raw = await asyncio.wait_for(future, timeout=20)
         except Exception as _gs:
             gee_seasonal_raw = {"available": False, "error": str(_gs)}
         _current_ndvi = gee_optical.get("ndvi")
