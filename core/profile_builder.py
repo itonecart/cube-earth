@@ -209,16 +209,8 @@ class ProfileBuilder:
             tillage_intel = None
         else:
             grazing = None
-            ndvi_age = None
-            if best:
-                try:
-                    from datetime import datetime as _dt, timezone as _tz
-                    ts = best.get("time_start","")
-                    if ts:
-                        t = _dt.fromisoformat(ts.replace("Z","+00:00"))
-                        ndvi_age = (_dt.now(_tz.utc) - t).days
-                except Exception:
-                    pass
+            # Use optical_age (GEE or HLS whichever is primary)
+            ndvi_age = optical_age
             tillage_intel = tillage_decisions(ndvi, ndvi_age, surf_use, root_use, slope, crop_str, traffic["score"])
 
         # Confidence engine
