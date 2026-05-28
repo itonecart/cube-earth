@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime, timezone
 from extractors.era5_extractor import ERA5Extractor
 from extractors.gee_extractor import GEEExtractor
+from extractors.gee_optical_extractor import GEEOpticalExtractor
 from extractors.nasadem_extractor import NASADEMExtractor
 from extractors.hls_extractor import HLSExtractor
 from extractors.sentinel1_extractor import Sentinel1Extractor
@@ -58,6 +59,7 @@ class ProfileBuilder:
     def __init__(self):
         self.era5      = ERA5Extractor()
         self.gee       = GEEExtractor()
+        self.gee_optical = GEEOpticalExtractor()
         self.nasadem   = NASADEMExtractor()
         self.hls       = HLSExtractor()
         self.sentinel1 = Sentinel1Extractor()
@@ -90,6 +92,21 @@ class ProfileBuilder:
 
         # Run pixel extractions in parallel
         best = hls_result.get("latest")
+
+        # GEE Optical — primary current NDVI (fresher than HLS)
+        try:
+            import concurrent.futures
+            loop = asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = loop.run_in_executor(
+                    pool,
+                    lambda: asyncio.run(self.gee_optical.extract(lat, lng))
+                )
+                gee_optical_raw = await asyncio.wait_for(future, timeout=25)
+        except Exception as _goe:
+            gee_optical_raw = {"available": False, "error": str(_goe)}
+
+        gee_optical = self.gee_optical.parse(gee_optical_raw)
         eco_raw = await self.ecostress.extract(lat, lng, start, end)
         sar_result  = await extract_s1_backscatter(lat, lng, start, end)
         eco_result = self.ecostress.parse(eco_raw)
@@ -124,8 +141,47 @@ class ProfileBuilder:
         area_ha    = parcel.get("claim_area") if parcel else None
         size_class = parcel_size_class(area_ha)
         penalty    = confidence_penalty(size_class)
-        ndvi = indices.get("ndvi") if indices else None
-        gcap = indices.get("gcap") if indices else None
+        # GEE optical as primary — fresher than HLS
+        gee_ndvi  = gee_optical.get("ndvi") if gee_optical.get("available") else None
+        gee_ndre  = gee_optical.get("ndre") if gee_optical.get("available") else None
+        gee_cire  = gee_optical.get("cire") if gee_optical.get("available") else None
+        gee_gcap  = gee_optical.get("gcap") if gee_optical.get("available") else None
+        gee_age   = gee_optical.get("age_days") if gee_optical.get("available") else None
+        hls_ndvi  = indices.get("ndvi") if indices else None
+        hls_age   = None
+        if best:
+            try:
+                from datetime import datetime as _dt2, timezone as _tz2
+                ts2 = best.get("time_start","")
+                if ts2:
+                    t2 = _dt2.fromisoformat(ts2.replace("Z","+00:00"))
+                    hls_age = (_dt2.now(_tz2.utc) - t2).days
+            except Exception:
+                pass
+
+        use_gee_optical = (
+            gee_ndvi is not None and (
+                hls_ndvi is None or
+                hls_age is None or
+                (gee_age is not None and gee_age <= hls_age)
+            )
+        )
+
+        if use_gee_optical:
+            ndvi          = gee_ndvi
+            gcap          = gee_gcap
+            optical_source = "GEE Sentinel-2 SR 10m"
+            optical_date   = gee_optical.get("date")
+            optical_age    = gee_age
+            optical_cloud  = gee_optical.get("cloud_cover", 0)
+        else:
+            ndvi          = hls_ndvi
+            gcap          = indices.get("gcap") if indices else None
+            optical_source = "HLS Sentinel-2 30m"
+            optical_date   = best.get("time_start") if best else None
+            optical_age    = hls_age
+            optical_cloud  = best.get("cloud_cover") if best else None
+
         crop_str   = parcel.get("crop") if parcel else None
         crop_info  = classify_crop(crop_str)
         crop_class = crop_info["class"]
@@ -169,8 +225,8 @@ class ProfileBuilder:
         s2c     = s2_confidence(
                       ndvi,
                       indices.get("ndre") if indices else None,
-                      best.get("cloud_cover") if best else 100,
-                      best.get("time_start") if best else None)
+                      optical_cloud or 0,
+                      optical_date)
         smapc   = smap_confidence(
                       smap_surf, smap_root,
                       smap_result.get("granule_date") if smap_result.get("available") else None)
@@ -217,14 +273,16 @@ class ProfileBuilder:
             "vegetation": {
                 "available":    indices is not None,
                 "ndvi":         ndvi,
-                "ndre":         indices.get("ndre") if indices else None,
-                "cire":         indices.get("cire") if indices else None,
+                "ndre":         gee_ndre if use_gee_optical else (indices.get("ndre") if indices else None),
+                "cire":         gee_cire if use_gee_optical else (indices.get("cire") if indices else None),
                 "gcap":         gcap,
                 "ndvi_status":  ndvi_status_for_crop(ndvi, crop_class),
                 "gcap_status":  interpret_gcap(gcap),
-                "granule_date": best.get("time_start") if best else None,
-                "cloud_cover":  best.get("cloud_cover") if best else None,
-                "source":       "HLS Sentinel-2 30m",
+                "granule_date": optical_date,
+                "cloud_cover":  optical_cloud,
+                "age_days":     optical_age,
+                "source":       optical_source,
+                "gee_optical":  gee_optical.get("available", False),
             },
             "vegetation_trend": {
                 "available":    gee_result.get("available", False),
