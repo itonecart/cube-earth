@@ -222,7 +222,7 @@ class GEEExtractor(BaseExtractor):
 def detect_events(series):
     """
     Detect significant field events from NDVI time series.
-    Returns list of detected events with dates and types.
+    Validates events against surrounding observations to avoid cloud artifacts.
     """
     if not series or len(series) < 3:
         return []
@@ -234,20 +234,35 @@ def detect_events(series):
         curr = series[i]
         diff = curr["ndvi"] - prev["ndvi"]
 
-        # Harvest / cutting event — sudden large drop
-        if diff < -0.20:
+        # Validate: check if recovery follows within 1-2 observations
+        # If NDVI recovers quickly, the drop was likely cloud/snow artifact
+        next_ndvi = series[i+1]["ndvi"] if i+1 < len(series) else None
+        next2_ndvi = series[i+2]["ndvi"] if i+2 < len(series) else None
+
+        is_artifact = False
+        if next_ndvi and curr["ndvi"] < 0.30:
+            # If next observation is much higher, current is likely artifact
+            if next_ndvi > curr["ndvi"] + 0.20:
+                is_artifact = True
+            if next2_ndvi and next2_ndvi > curr["ndvi"] + 0.20:
+                is_artifact = True
+
+        # Harvest / cutting event — sudden large drop, must be sustained
+        if diff < -0.20 and not is_artifact:
+            # Require low NDVI to persist (not just one bad observation)
+            sustained = curr["ndvi"] < 0.35
             events.append({
-                "type":       "harvest_or_cut",
-                "date":       curr["date"],
+                "type":        "harvest_or_cut",
+                "date":        curr["date"],
                 "ndvi_before": prev["ndvi"],
                 "ndvi_after":  curr["ndvi"],
                 "change":      round(diff, 4),
-                "label":      "Harvest or cutting event detected",
-                "confidence": "high" if diff < -0.30 else "moderate",
+                "label":       "Harvest or cutting event detected",
+                "confidence":  "high" if (diff < -0.30 and sustained) else "moderate",
             })
 
-        # Flooding / waterlogging — NDVI drop + NDWI context
-        elif diff < -0.10:
+        # Vegetation loss — moderate drop, sustained
+        elif diff < -0.10 and not is_artifact and curr["ndvi"] < 0.40:
             events.append({
                 "type":        "vegetation_loss",
                 "date":        curr["date"],
@@ -258,20 +273,23 @@ def detect_events(series):
                 "confidence":  "moderate",
             })
 
-        # Reseeding / recovery — sudden rise from low base
-        elif diff > 0.20 and prev["ndvi"] < 0.30:
-            events.append({
-                "type":        "recovery_or_reseeding",
-                "date":        curr["date"],
-                "ndvi_before": prev["ndvi"],
-                "ndvi_after":  curr["ndvi"],
-                "change":      round(diff, 4),
-                "label":       "Vegetation recovery or reseeding",
-                "confidence":  "moderate",
-            })
+        # Reseeding / recovery — rise from sustained low base
+        elif diff > 0.20 and prev["ndvi"] < 0.25 and not is_artifact:
+            # Only flag if previous was genuinely low (not artifact)
+            prev_prev = series[i-2]["ndvi"] if i >= 2 else None
+            if prev_prev is None or prev_prev < 0.35:
+                events.append({
+                    "type":        "recovery_or_reseeding",
+                    "date":        curr["date"],
+                    "ndvi_before": prev["ndvi"],
+                    "ndvi_after":  curr["ndvi"],
+                    "change":      round(diff, 4),
+                    "label":       "Vegetation recovery or reseeding",
+                    "confidence":  "moderate",
+                })
 
-        # Ploughing — very low NDVI sustained
-        elif curr["ndvi"] < 0.15 and prev["ndvi"] < 0.15:
+        # Bare soil — sustained very low NDVI (2+ consecutive)
+        elif curr["ndvi"] < 0.15 and prev["ndvi"] < 0.20:
             if not any(e["type"] == "bare_soil" and
                       e["date"] >= series[max(0,i-2)]["date"]
                       for e in events):
