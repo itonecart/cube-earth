@@ -189,18 +189,25 @@ class ProfileBuilder:
 
         if use_gee_optical:
             ndvi          = gee_ndvi
+            ndre          = gee_ndre
+            cire          = gee_cire
             gcap          = gee_gcap
-            optical_source = "GEE Sentinel-2 SR 10m"
+            optical_source = gee_optical.get("source", "GEE Sentinel-2 SR 10m")
             optical_date   = gee_optical.get("date")
             optical_age    = gee_age
             optical_cloud  = gee_optical.get("cloud_cover", 0)
         else:
             ndvi          = hls_ndvi
+            ndre          = indices.get("ndre") if indices else None
+            cire          = indices.get("cire") if indices else None
             gcap          = indices.get("gcap") if indices else None
             optical_source = "HLS Sentinel-2 30m"
             optical_date   = best.get("time_start") if best else None
             optical_age    = hls_age
             optical_cloud  = best.get("cloud_cover") if best else None
+
+        # SINGLE OPTICAL AUTHORITY — all downstream uses unified variables
+        # ndvi, ndre, cire, gcap, optical_source, optical_date, optical_age, optical_cloud
 
         crop_str   = parcel.get("crop") if parcel else None
         crop_info  = classify_crop(crop_str)
@@ -236,7 +243,7 @@ class ProfileBuilder:
         # Confidence engine
         s2c     = s2_confidence(
                       ndvi,
-                      indices.get("ndre") if indices else None,
+                      ndre,
                       optical_cloud or 0,
                       optical_date)
         smapc   = smap_confidence(
@@ -285,8 +292,8 @@ class ProfileBuilder:
             "vegetation": {
                 "available":    indices is not None,
                 "ndvi":         ndvi,
-                "ndre":         gee_ndre if use_gee_optical else (indices.get("ndre") if indices else None),
-                "cire":         gee_cire if use_gee_optical else (indices.get("cire") if indices else None),
+                "ndre":         ndre,
+                "cire":         cire,
                 "gcap":         gcap,
                 "ndvi_status":  ndvi_status_for_crop(ndvi, crop_class),
                 "gcap_status":  interpret_gcap(gcap),
