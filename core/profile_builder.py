@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from extractors.era5_extractor import ERA5Extractor
 from extractors.gee_extractor import GEEExtractor
 from extractors.gee_optical_extractor import GEEOpticalExtractor
+from extractors.gee_seasonal_extractor import GEESeasonalExtractor
 from extractors.nasadem_extractor import NASADEMExtractor
 from extractors.hls_extractor import HLSExtractor
 from extractors.sentinel1_extractor import Sentinel1Extractor
@@ -60,6 +61,7 @@ class ProfileBuilder:
         self.era5      = ERA5Extractor()
         self.gee       = GEEExtractor()
         self.gee_optical = GEEOpticalExtractor()
+        self.gee_seasonal = GEESeasonalExtractor()
         self.nasadem   = NASADEMExtractor()
         self.hls       = HLSExtractor()
         self.sentinel1 = Sentinel1Extractor()
@@ -107,6 +109,23 @@ class ProfileBuilder:
             gee_optical_raw = {"available": False, "error": str(_goe)}
 
         gee_optical = self.gee_optical.parse(gee_optical_raw)
+
+        # Seasonal anomaly — run in background with timeout
+        gee_seasonal_raw = {"available": False}
+        try:
+            import concurrent.futures
+            loop = asyncio.get_event_loop()
+            current_ndvi = gee_optical.get("ndvi") or (indices.get("ndvi") if indices else None)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = loop.run_in_executor(
+                    pool,
+                    lambda: asyncio.run(self.gee_seasonal.extract(lat, lng, current_ndvi))
+                )
+                gee_seasonal_raw = await asyncio.wait_for(future, timeout=30)
+        except Exception as _gs:
+            gee_seasonal_raw = {"available": False, "error": str(_gs)}
+        current_ndvi = gee_optical.get("ndvi") or (indices.get("ndvi") if indices else None)
+        gee_seasonal = self.gee_seasonal.parse(gee_seasonal_raw, current_ndvi=current_ndvi)
         eco_raw = await self.ecostress.extract(lat, lng, start, end)
         sar_result  = await extract_s1_backscatter(lat, lng, start, end)
         eco_result = self.ecostress.parse(eco_raw)
@@ -300,6 +319,15 @@ class ProfileBuilder:
                 ),
                 "source":       "GEE Sentinel-2 SR 10m",
                 "events":       gee_result.get("events", []),
+                "seasonal": {
+                    "available":     gee_seasonal.get("available", False),
+                    "baseline_mean": gee_seasonal.get("baseline_mean"),
+                    "anomaly_pct":   gee_seasonal.get("anomaly_pct"),
+                    "anomaly_label": gee_seasonal.get("anomaly_label"),
+                    "anomaly_level": gee_seasonal.get("anomaly_level"),
+                    "years_used":    gee_seasonal.get("years_used"),
+                    "yearly_ndvi":   gee_seasonal.get("yearly_ndvi", {}),
+                },
             },
             "thermal": lst if lst and lst.get("available") else {
                 "available": False,
