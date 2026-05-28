@@ -18,6 +18,7 @@ from analytics.soil_moisture import classify_surface, classify_rootzone, classif
 from analytics.drought import drought_stress_index, waterlogging_probability
 from analytics.grazing import grazing_suitability, machinery_trafficability, slurry_suitability
 from analytics.crop_classifier import classify_crop, ndvi_status_for_crop
+from analytics.crop_stage import detect_crop_stage
 from analytics.tillage import tillage_decisions
 from core.confidence_engine import (
     s2_confidence, smap_confidence, era5_confidence,
@@ -369,6 +370,7 @@ class ProfileBuilder:
             "agronomic": {
                 "crop_class":               crop_class,
                 "crop_info":                crop_info,
+                "crop_stage":               detect_crop_stage(crop_str, ndvi),
                 "grazing_suitability":      grazing,
                 "tillage_intelligence":     tillage_intel,
                 "machinery_trafficability": traffic,
