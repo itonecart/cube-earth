@@ -279,7 +279,7 @@ def detect_events(series):
                     "type":   "bare_soil",
                     "date":   curr["date"],
                     "ndvi":   curr["ndvi"],
-                    "label":  "Bare soil or post-harvest",
+                    "label":  "Post-harvest low canopy state",
                     "confidence": "high",
                 })
 
