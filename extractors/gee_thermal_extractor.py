@@ -101,6 +101,7 @@ class GEEThermalExtractor(BaseExtractor):
                 "lst_kelvin":      round(lst_k, 2),
                 "interpretation":  interpret_lst(lst_c),
                 "age_days":        age_days,
+                "latest_date":     latest_dt.strftime('%Y-%m-%d'),
                 "acquisitions":    count,
                 "source":          f"GEE Landsat 8/9 Thermal ({count} images)",
                 "resolution":      "30m",
