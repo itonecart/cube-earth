@@ -134,9 +134,20 @@ def s1_confidence(granule_count, latest_date=None, sar_extracted=False):
             "literature": "Barrett 2014: C-band alone kappa=0.87 for grassland classification"}
 
 
-def ecostress_confidence(celsius, granule_time):
+def ecostress_confidence(celsius, granule_time, landsat_lst=None, landsat_age=None):
     age = _age_days(granule_time)
     if celsius is None:
+        # Try Landsat thermal fallback
+        if landsat_lst is not None:
+            score = 5  # Partial credit for Landsat thermal
+            penalty = _age_penalty(landsat_age or 30, [(7,0),(14,0.5),(30,1),(60,2)])
+            score -= penalty
+            return {"score": round(max(0,score),1), "level": "moderate",
+                    "sensor": "Landsat Thermal", "resolution": "30m",
+                    "age_days": landsat_age, "age_label": _age_label(landsat_age),
+                    "reasons": [f"Landsat LST {landsat_lst}°C — partial thermal coverage",
+                                "ECOSTRESS unavailable — Landsat 30m fallback"],
+                    "literature": "Hayes 2025: Thermal data limited by cloud in maritime climates"}
         return {"score": 0, "level": "unavailable",
                 "sensor": "ECOSTRESS", "resolution": "70m",
                 "age_days": None, "age_label": "no data",

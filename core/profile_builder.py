@@ -286,7 +286,9 @@ class ProfileBuilder:
                       sar_extracted=sar_result.get("available") if sar_result else False)
         ecoc    = ecostress_confidence(
                       lst.get("celsius") if lst else None,
-                      lst.get("granule_time") if lst else None)
+                      lst.get("granule_time") if lst else None,
+                      landsat_lst=gee_thermal.get("lst_celsius") if gee_thermal.get("available") else None,
+                      landsat_age=gee_thermal.get("age_days") if gee_thermal.get("available") else None)
         match_dist = parcel.get("_match_distance_m") if parcel else None
         match_qual = parcel.get("_match_quality") if parcel else None
         parcelc = parcel_confidence(area_ha, parcel.get("crop") if parcel else None, match_dist, match_qual)
