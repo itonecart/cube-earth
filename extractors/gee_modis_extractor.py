@@ -96,7 +96,7 @@ class GEEMODISExtractor(BaseExtractor):
                 )
                 return img.set('lst_c', mean.get('LST_Day_1km'))
 
-            lst_series_col = modis_lst.limit(30).map(get_lst)
+            lst_series_col = modis_lst.limit(7).map(get_lst)
             lst_vals  = lst_series_col.aggregate_array('lst_c').getInfo()
             lst_dates = lst_series_col.aggregate_array('system:time_start').getInfo()
 

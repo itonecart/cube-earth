@@ -127,7 +127,7 @@ class ProfileBuilder:
                     pool,
                     lambda: asyncio.run(self.gee_optical.extract(lat, lng))
                 )
-                gee_optical_raw = await asyncio.wait_for(future, timeout=25)
+                gee_optical_raw = await asyncio.wait_for(future, timeout=15)
         except Exception as _goe:
             gee_optical_raw = {"available": False, "error": str(_goe)}
 
@@ -144,7 +144,7 @@ class ProfileBuilder:
                     pool,
                     lambda: asyncio.run(self.gee_seasonal.extract(lat, lng, _current_ndvi))
                 )
-                gee_seasonal_raw = await asyncio.wait_for(future, timeout=20)
+                gee_seasonal_raw = await asyncio.wait_for(future, timeout=12)
         except Exception as _gs:
             gee_seasonal_raw = {"available": False, "error": str(_gs)}
         _current_ndvi = gee_optical.get("ndvi")
@@ -158,7 +158,7 @@ class ProfileBuilder:
                 future = loop.run_in_executor(
                     pool, lambda: asyncio.run(self.gee_sar.extract(lat, lng))
                 )
-                gee_sar_raw = await asyncio.wait_for(future, timeout=20)
+                gee_sar_raw = await asyncio.wait_for(future, timeout=12)
         except Exception as _gs:
             gee_sar_raw = {"available": False, "error": str(_gs)}
         gee_sar = self.gee_sar.parse(gee_sar_raw)
@@ -184,7 +184,7 @@ class ProfileBuilder:
                 future = loop.run_in_executor(
                     pool, lambda: asyncio.run(self.gee_modis.extract(lat, lng, days=14))
                 )
-                gee_modis_raw = await asyncio.wait_for(future, timeout=20)
+                gee_modis_raw = await asyncio.wait_for(future, timeout=12)
         except Exception as _gm:
             gee_modis_raw = {"available": False, "error": str(_gm)}
         gee_modis = self.gee_modis.parse(gee_modis_raw)
