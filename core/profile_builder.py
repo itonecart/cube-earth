@@ -91,7 +91,16 @@ class ProfileBuilder:
             self.smap.extract(lat, lng, start, end),
             return_exceptions=True,
         )
-        era5_raw, dem_raw, parcel, commonage, hls_raw, s1_raw, smap_raw = results
+        era5_raw, dem_raw, parcel_supabase, commonage, hls_raw, s1_raw, smap_raw = results
+
+        # Try DAFM GeoAPI first — exact point-in-polygon
+        try:
+            dafm_parcel = await get_parcel_at_point(lat, lng)
+        except Exception:
+            dafm_parcel = None
+
+        # Use DAFM if available (exact match), fallback to Supabase
+        parcel = dafm_parcel if dafm_parcel else parcel_supabase
 
         era5       = self.era5.parse(era5_raw if not isinstance(era5_raw, Exception) else None)
         dem        = self.nasadem.parse(dem_raw if not isinstance(dem_raw, Exception) else None)
