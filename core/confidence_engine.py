@@ -313,7 +313,7 @@ def freshness_summary(s2_date, smap_date, s1_date, eco_date,
         "sentinel2":  entry("Sentinel-2", s2_date, "10m" if s2_date and len(str(s2_date))==10 else "30m"),
         "smap":       entry("SMAP L4",    smap_date, "9km"),
         "sentinel1":  sar_entry,
-        "ecostress":  entry("ECOSTRESS",  eco_date, "70m"),
+        "ecostress":  entry("ECOSTRESS" if eco_date else "Landsat Thermal", eco_date, "70m" if eco_date else "30m"),
         "era5":       {"sensor": "ERA5-Land", "age_label": "seasonal context",
                        "resolution": "9km", "freshness": "seasonal_context",
                        "note": "ERA5 provides seasonal trend — not parcel current moisture"},
@@ -401,6 +401,7 @@ def overall_confidence(s2c, smapc, era5c, s1c, ecoc, parcelc, agreement):
         s2_score = max(s2_score - round((s2_age - 20) / 10, 1), 0)
 
     # Fix 3: ECOSTRESS contributes 0 if unavailable — not 5
+    # But Landsat thermal partial credit if available
     eco_score = 0 if ecoc["level"] == "unavailable" else ecoc["score"]
 
     scores = {

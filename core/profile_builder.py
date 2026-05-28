@@ -298,11 +298,16 @@ class ProfileBuilder:
                       vh_db=sar_result.get("vh_db") if sar_result else None,
                       s2_age=s2c.get("age_days"),
                       ecostress_available=lst is not None and lst.get("available", False))
+        # Use Landsat thermal date if ECOSTRESS unavailable
+        thermal_date = (lst.get("granule_time") if lst and lst.get("available")
+                       else gee_thermal.get("latest_date") if gee_thermal.get("available")
+                       else None)
+
         fresh   = freshness_summary(
                       optical_date if use_gee_optical else (best.get("time_start") if best else None),
                       smap_result.get("granule_date") if smap_result.get("available") else None,
                       s1_result.get("latest", {}).get("time_start") if s1_result.get("latest") else None,
-                      lst.get("granule_time") if lst else None,
+                      thermal_date,
                       sar_latest=sar_result.get("latest_acquisition") if sar_result else None,
                       sar_acquisitions=sar_result.get("acquisitions") if sar_result else None)
         explain = explainability(
