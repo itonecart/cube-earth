@@ -78,7 +78,7 @@ class ProfileBuilder:
         self.ecostress = ECOSTRESSExtractor()
         self.lpis      = LPISClient()
 
-    async def build(self, lat, lng, year):
+    async def build(self, lat, lng, year, parcel_override=None):
         start = f"{year}-04-01"
         end   = f"{year}-10-31"
 
@@ -95,16 +95,21 @@ class ProfileBuilder:
         )
         era5_raw, dem_raw, parcel_supabase, commonage, hls_raw, s1_raw, smap_raw = results
 
-        # Try DAFM GeoAPI first — exact point-in-polygon
-        try:
-            dafm_parcel = await get_parcel_at_point(lat, lng)
-            if dafm_parcel:
-                print(f"DAFM API: {dafm_parcel.get('crop')} at {dafm_parcel.get('_match_distance_m')}m")
-            else:
-                print("DAFM API: no parcel found — falling back to Supabase")
-        except Exception as _de:
-            print(f"DAFM API error: {_de}")
-            dafm_parcel = None
+        # Use parcel_override if provided (from UI selection)
+        if parcel_override and parcel_override.get("crop"):
+            dafm_parcel = {**parcel_override, "_source": "UI selection", "_match_distance_m": 0, "_match_quality": "exact"}
+            print(f"Using UI parcel override: {parcel_override.get('crop')}")
+        else:
+            # Try DAFM GeoAPI first — exact point-in-polygon
+            try:
+                dafm_parcel = await get_parcel_at_point(lat, lng)
+                if dafm_parcel:
+                    print(f"DAFM API: {dafm_parcel.get('crop')} at {dafm_parcel.get('_match_distance_m')}m")
+                else:
+                    print("DAFM API: no parcel found — falling back to Supabase")
+            except Exception as _de:
+                print(f"DAFM API error: {_de}")
+                dafm_parcel = None
 
         # Use DAFM if available (exact match), fallback to Supabase
         parcel = dafm_parcel if dafm_parcel else parcel_supabase
