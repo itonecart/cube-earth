@@ -461,7 +461,7 @@ class ProfileBuilder:
             "agronomic": {
                 "crop_class":               crop_class,
                 "crop_info":                crop_info,
-                "crop_stage":               detect_crop_stage(crop_str, ndvi),
+                "crop_stage":               detect_crop_stage(crop_str, ndvi, events=gee_result.get("events", [])),
                 "grazing_suitability":      grazing,
                 "tillage_intelligence":     tillage_intel,
                 "machinery_trafficability": traffic,

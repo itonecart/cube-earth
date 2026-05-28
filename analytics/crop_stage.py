@@ -109,15 +109,44 @@ def get_crop_calendar_key(crop_str):
     return None
 
 
-def detect_crop_stage(crop_str, ndvi, month=None, trend=None):
+def detect_crop_stage(crop_str, ndvi, month=None, trend=None, events=None):
     """
-    Detect crop growth stage from crop type, NDVI and calendar month.
+    Detect crop growth stage from crop type, NDVI, calendar month and EO events.
+    Events override calendar-based inference.
     """
     if not crop_str or ndvi is None:
         return None
 
     if month is None:
         month = datetime.datetime.now().month
+
+    # EO evidence override — trust observations over calendar
+    if events:
+        event_types = [e.get("type") for e in events]
+        if "harvest_or_cut" in event_types or "bare_soil" in event_types:
+            return {
+                "stage":    "post_disturbance",
+                "label":    "Post-disturbance Field State",
+                "advice":   "Recent disturbance detected — monitor soil exposure and field conditions",
+                "crop":     crop_str,
+                "calendar": "eo_derived",
+                "month":    month,
+                "ndvi":     ndvi,
+                "source":   "EO event detection",
+            }
+
+    # Low NDVI override
+    if ndvi < 0.20:
+        return {
+            "stage":    "low_canopy",
+            "label":    "Low Canopy / Post-harvest State",
+            "advice":   "Very low vegetation signal — post-harvest, bare soil or early establishment",
+            "crop":     crop_str,
+            "calendar": "ndvi_derived",
+            "month":    month,
+            "ndvi":     ndvi,
+            "source":   "NDVI threshold",
+        }
 
     cal_key = get_crop_calendar_key(crop_str)
     if not cal_key:
