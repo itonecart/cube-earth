@@ -23,6 +23,7 @@ from analytics.drought import drought_stress_index, waterlogging_probability
 from analytics.grazing import grazing_suitability, machinery_trafficability, slurry_suitability
 from analytics.crop_classifier import classify_crop, ndvi_status_for_crop
 from analytics.crop_stage import detect_crop_stage
+from analytics.trend_interpreter import interpret_trend
 from analytics.tillage import tillage_decisions
 from core.confidence_engine import (
     s2_confidence, smap_confidence, era5_confidence,
@@ -398,6 +399,15 @@ class ProfileBuilder:
                 ),
                 "source":       "GEE Sentinel-2 SR 10m",
                 "events":       gee_result.get("events", []),
+                "interpretation": interpret_trend(
+                    gee_result.get("long_trend"),
+                    gee_result.get("short_trend"),
+                    gee_result.get("long_diff"),
+                    ndvi,
+                    crop_class,
+                    anomaly_pct=gee_seasonal.get("anomaly_pct"),
+                    events=gee_result.get("events", []),
+                ),
                 "seasonal": {
                     "available":     gee_seasonal.get("available", False),
                     "baseline_mean": gee_seasonal.get("baseline_mean"),
