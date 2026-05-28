@@ -47,18 +47,11 @@ class GEEThermalExtractor(BaseExtractor):
             now   = datetime.datetime.now(datetime.timezone.utc)
             start = now - datetime.timedelta(days=days)
 
-            def mask_clouds(image):
-                qa   = image.select('QA_PIXEL')
-                mask = (qa.bitwiseAnd(1 << 3).eq(0)
-                         .And(qa.bitwiseAnd(1 << 4).eq(0)))
-                return image.updateMask(mask)
-
             l89 = (ee.ImageCollection('LANDSAT/LC09/C02/T1_L2')
                    .merge(ee.ImageCollection('LANDSAT/LC08/C02/T1_L2'))
                    .filterBounds(buffer)
                    .filterDate(start.strftime('%Y-%m-%d'), now.strftime('%Y-%m-%d'))
-                   .filter(ee.Filter.lt('CLOUD_COVER', 40))
-                   .map(mask_clouds)
+                   .filter(ee.Filter.lt('CLOUD_COVER', 30))
                    .sort('system:time_start', False))
 
             count = l89.size().getInfo()
