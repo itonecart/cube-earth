@@ -6,6 +6,14 @@ import datetime
 
 
 CROP_CALENDARS = {
+    "arable": [
+        {"stage": "soil_preparation", "months": [3, 4],      "ndvi_range": (0.05, 0.25)},
+        {"stage": "emergence",        "months": [4, 5],      "ndvi_range": (0.10, 0.40)},
+        {"stage": "vegetative",       "months": [5, 6],      "ndvi_range": (0.30, 0.75)},
+        {"stage": "canopy_closure",   "months": [6, 7],      "ndvi_range": (0.55, 0.90)},
+        {"stage": "senescence",       "months": [8, 9],      "ndvi_range": (0.20, 0.60)},
+        {"stage": "post_harvest",     "months": [9, 10, 11], "ndvi_range": (0.05, 0.25)},
+    ],
     "winter_oilseed_rape": [
         {"stage": "emergence",    "months": [9, 10],     "ndvi_range": (0.10, 0.30)},
         {"stage": "vegetative",   "months": [11, 12, 1, 2], "ndvi_range": (0.25, 0.60)},
@@ -42,6 +50,8 @@ CROP_CALENDARS = {
 }
 
 STAGE_LABELS = {
+    "soil_preparation": "Soil Preparation",
+    "canopy_closure":   "Canopy Closure",
     "emergence":       "Crop Emergence",
     "vegetative":      "Vegetative Growth",
     "stem_extension":  "Stem Extension",
@@ -60,6 +70,8 @@ STAGE_LABELS = {
 }
 
 STAGE_ADVICE = {
+    "soil_preparation": "Field being prepared — avoid heavy machinery on wet soil",
+    "canopy_closure":   "Full canopy — monitor for disease and nutrient stress",
     "emergence":       "Monitor for establishment — soil moisture critical",
     "vegetative":      "N uptake phase — monitor for deficiency",
     "stem_extension":  "Rapid growth — check for lodging risk",
@@ -90,6 +102,10 @@ def get_crop_calendar_key(crop_str):
         return "winter_barley"
     if "pasture" in c or "grass" in c or "meadow" in c:
         return "grassland"
+    if "potato" in c or "beet" in c or "vegetable" in c:
+        return "arable"
+    if "maize" in c or "corn" in c:
+        return "arable"
     return None
 
 
