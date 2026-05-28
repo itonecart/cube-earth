@@ -153,7 +153,7 @@ class ProfileBuilder:
                 future = loop.run_in_executor(
                     pool, lambda: asyncio.run(self.gee_thermal.extract(lat, lng))
                 )
-                gee_thermal_raw = await asyncio.wait_for(future, timeout=20)
+                gee_thermal_raw = await asyncio.wait_for(future, timeout=30)
         except Exception as _gt:
             gee_thermal_raw = {"available": False, "error": str(_gt)}
         gee_thermal = self.gee_thermal.parse(gee_thermal_raw)
