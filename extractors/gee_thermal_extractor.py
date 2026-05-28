@@ -89,11 +89,11 @@ class GEEThermalExtractor(BaseExtractor):
 
             # Thermal stress interpretation
             def interpret_lst(t):
-                if t > 35:  return "Heat stress likely"
-                if t > 28:  return "Warm — monitor for stress"
-                if t > 15:  return "Normal range"
-                if t > 5:   return "Cool — limited growth"
-                return "Cold — growth suppressed"
+                if t > 35:  return "Heat stress risk"
+                if t > 28:  return "Warm surface temperatures"
+                if t > 15:  return "No thermal stress detected"
+                if t > 5:   return "Moderate surface temperatures"
+                return "Cold surface — growth suppressed"
 
             return {
                 "available":       True,
