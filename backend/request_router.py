@@ -26,6 +26,14 @@ async def health():
     return {"status": "ok", "service": "cube-earth"}
 
 
+@app.get("/parcels_in_bbox")
+async def parcels_in_bbox(minlng: float, minlat: float, maxlng: float, maxlat: float):
+    import httpx
+    url = f"https://geoapi.opendata.agriculture.gov.ie/shps/collections/anonymous-lpis-data-for-2024_2024-lpis-data/items?bbox={minlng},{minlat},{maxlng},{maxlat}&f=json&limit=50"
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.get(url)
+        return r.json()
+
 @app.get("/parcel_at_point")
 async def parcel_at_point(lat: float, lng: float):
     import httpx
