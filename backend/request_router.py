@@ -52,3 +52,24 @@ async def field_profile(req: ProfileRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/wms_token")
+async def wms_token():
+    """Get short-lived token for Sentinel Hub WMS tiles."""
+    import httpx
+    from config.settings import settings
+    async with httpx.AsyncClient(timeout=10) as client:
+        r = await client.post(
+            "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token",
+            data={
+                "grant_type": "client_credentials",
+                "client_id": settings.CDSE_CLIENT_ID,
+                "client_secret": settings.CDSE_CLIENT_SECRET,
+            }
+        )
+        data = r.json()
+        token = data.get("access_token")
+        return {
+            "token": token,
+            "wms_url": f"https://sh.dataspace.copernicus.eu/ogc/wms/TOKEN?token={token}"
+        }
