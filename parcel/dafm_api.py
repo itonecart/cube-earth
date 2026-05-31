@@ -34,13 +34,15 @@ async def get_parcel_at_point(lat, lng, tolerance=0.005):
 
     # Find best match using point-in-polygon test
     def point_in_polygon(lat, lng, polygon_coords):
-        """Ray casting algorithm for point-in-polygon."""
+        """Ray casting algorithm — coords are [lng, lat] in GeoJSON."""
         inside = False
         n = len(polygon_coords)
         j = n - 1
         for i in range(n):
-            xi, yi = polygon_coords[i]
-            xj, yj = polygon_coords[j]
+            # GeoJSON coords are [longitude, latitude]
+            xi, yi = polygon_coords[i][0], polygon_coords[i][1]
+            xj, yj = polygon_coords[j][0], polygon_coords[j][1]
+            # Test against lng/lat correctly
             if ((yi > lat) != (yj > lat)) and (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi):
                 inside = not inside
             j = i
