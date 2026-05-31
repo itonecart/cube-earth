@@ -111,8 +111,8 @@ class ProfileBuilder:
                 print(f"DAFM API error: {_de}")
                 dafm_parcel = None
 
-        # Use DAFM if available (exact match), fallback to Supabase
-        parcel = dafm_parcel if dafm_parcel else parcel_supabase
+        # Use DAFM only — Supabase had only 50k parcels, DAFM has full Ireland
+        parcel = dafm_parcel if dafm_parcel else {}
 
         era5       = self.era5.parse(era5_raw if not isinstance(era5_raw, Exception) else None)
         dem        = self.nasadem.parse(dem_raw if not isinstance(dem_raw, Exception) else None)
