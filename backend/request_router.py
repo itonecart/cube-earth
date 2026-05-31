@@ -19,6 +19,7 @@ class ProfileRequest(BaseModel):
     lat:  float
     lng:  float
     year: int = 2026
+    parcel_override: dict = None
 
 
 @app.api_route("/health", methods=["GET", "HEAD"])
