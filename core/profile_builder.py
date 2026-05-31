@@ -98,7 +98,14 @@ class ProfileBuilder:
         # Use parcel_override if provided (from UI selection)
         if parcel_override and parcel_override.get("crop"):
             dafm_parcel = {**parcel_override, "_source": "UI selection", "_match_distance_m": 0, "_match_quality": "exact"}
-            print(f"Using UI parcel override: {parcel_override.get('crop')}")
+            print(f"Using UI parcel override: {parcel_override.get('crop')} {parcel_override.get('claim_area')}ha")
+            # Use parcel centroid for GEE extraction if geometry provided
+            geom = parcel_override.get("geometry")
+            if geom and geom.get("type") == "Polygon":
+                coords = geom.get("coordinates", [[]])[0]
+                if coords:
+                    lng = sum(c[0] for c in coords) / len(coords)
+                    lat = sum(c[1] for c in coords) / len(coords)
         else:
             # Try DAFM GeoAPI first — exact point-in-polygon
             try:
