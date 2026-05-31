@@ -73,3 +73,51 @@ async def wms_token():
             "token": token,
             "wms_url": f"https://sh.dataspace.copernicus.eu/ogc/wms/TOKEN?token={token}"
         }
+
+@app.get("/wms_tile")
+async def wms_tile(
+    layer: str = "TRUE-COLOR-S2L2A",
+    bbox: str = "",
+    width: int = 256,
+    height: int = 256,
+    time: str = "2026-05-01/2026-05-31"
+):
+    """Proxy Sentinel Hub WMS tiles with auth header."""
+    import httpx
+    from config.settings import settings
+    
+    # Get token
+    async with httpx.AsyncClient(timeout=10) as client:
+        token_r = await client.post(
+            "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token",
+            data={
+                "grant_type": "client_credentials",
+                "client_id": settings.CDSE_CLIENT_ID,
+                "client_secret": settings.CDSE_CLIENT_SECRET,
+            }
+        )
+        token = token_r.json().get("access_token")
+        
+        # Fetch WMS tile
+        wms_url = (
+            f"https://sh.dataspace.copernicus.eu/ogc/wms"
+            f"?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap"
+            f"&LAYERS={layer}"
+            f"&BBOX={bbox}"
+            f"&WIDTH={width}&HEIGHT={height}"
+            f"&CRS=EPSG:3857"
+            f"&FORMAT=image/jpeg"
+            f"&TIME={time}"
+            f"&MAXCC=80"
+        )
+        
+        tile_r = await client.get(
+            wms_url,
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        
+        from fastapi.responses import Response
+        return Response(
+            content=tile_r.content,
+            media_type="image/jpeg"
+        )
