@@ -45,7 +45,7 @@ async def parcel_at_point(lat: float, lng: float):
 @app.post("/field_profile")
 async def field_profile(req: ProfileRequest):
     try:
-        result = await service.build_profile(req.lat, req.lng, req.year)
+        result = await service.build(req.lat, req.lng, req.year, parcel_override=req.parcel_override)
         return {"success": True, **result}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
