@@ -9,7 +9,7 @@ GEOAPI_BASE = "https://geoapi.opendata.agriculture.gov.ie/shps/collections"
 COLLECTION  = "anonymous-lpis-data-for-2024_2024-lpis-data"
 
 
-async def get_parcel_at_point(lat, lng, tolerance=0.0001):
+async def get_parcel_at_point(lat, lng, tolerance=0.005):
     """
     Query DAFM GeoAPI for parcel at exact point.
     Uses bbox around point then checks geometry.
