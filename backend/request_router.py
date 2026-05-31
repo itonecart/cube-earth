@@ -36,12 +36,11 @@ async def parcels_in_bbox(minlng: float, minlat: float, maxlng: float, maxlat: f
 
 @app.get("/parcel_at_point")
 async def parcel_at_point(lat: float, lng: float):
-    import httpx
-    tol = 0.005
-    url = f"https://geoapi.opendata.agriculture.gov.ie/shps/collections/anonymous-lpis-data-for-2024_2024-lpis-data/items?bbox={lng-tol},{lat-tol},{lng+tol},{lat+tol}&f=json&limit=10"
-    async with httpx.AsyncClient(timeout=15) as client:
-        r = await client.get(url)
-        return r.json()
+    from parcel.dafm_api import get_parcel_at_point
+    result = await get_parcel_at_point(lat, lng)
+    if not result:
+        return {"features": [], "error": "No parcel found"}
+    return {"features": [{"properties": result}], "matched": True}
 
 @app.post("/field_profile")
 async def field_profile(req: ProfileRequest):
