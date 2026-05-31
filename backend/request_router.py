@@ -76,48 +76,42 @@ async def wms_token():
 
 @app.get("/wms_tile")
 async def wms_tile(
-    layer: str = "TRUE-COLOR-S2L2A",
-    bbox: str = "",
-    width: int = 256,
-    height: int = 256,
+    minlng: float = -9.5,
+    minlat: float = 52.0,
+    maxlng: float = -9.4,
+    maxlat: float = 52.1,
     time: str = "2026-05-01/2026-05-31"
 ):
-    """Proxy Sentinel Hub WMS tiles with auth header."""
+    """Sentinel-2 true color via Process API."""
     import httpx
     from config.settings import settings
-    
-    # Get token
-    async with httpx.AsyncClient(timeout=10) as client:
+    from fastapi.responses import Response
+
+    evalscript = """//VERSION=3
+function setup(){return{input:["B04","B03","B02"],output:{bands:3,sampleType:"UINT8"}}}
+function evaluatePixel(s){
+  return [Math.min(255,s.B04*3.5*255),Math.min(255,s.B03*3.5*255),Math.min(255,s.B02*3.5*255)]
+}"""
+
+    async with httpx.AsyncClient(timeout=30) as client:
         token_r = await client.post(
             "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token",
-            data={
-                "grant_type": "client_credentials",
-                "client_id": settings.CDSE_CLIENT_ID,
-                "client_secret": settings.CDSE_CLIENT_SECRET,
-            }
+            data={"grant_type":"client_credentials","client_id":settings.CDSE_CLIENT_ID,"client_secret":settings.CDSE_CLIENT_SECRET}
         )
         token = token_r.json().get("access_token")
-        
-        # Fetch WMS tile
-        wms_url = (
-            f"https://sh.dataspace.copernicus.eu/ogc/wms"
-            f"?SERVICE=WMS&VERSION=1.3.0&REQUEST=GetMap"
-            f"&LAYERS={layer}"
-            f"&BBOX={bbox}"
-            f"&WIDTH={width}&HEIGHT={height}"
-            f"&CRS=EPSG:3857"
-            f"&FORMAT=image/jpeg"
-            f"&TIME={time}"
-            f"&MAXCC=80"
+        t0, t1 = time.split("/")
+        process_r = await client.post(
+            "https://sh.dataspace.copernicus.eu/api/v1/process",
+            headers={"Authorization":f"Bearer {token}","Content-Type":"application/json"},
+            json={
+                "input":{
+                    "bounds":{"bbox":[minlng,minlat,maxlng,maxlat],"properties":{"crs":"http://www.opengis.net/def/crs/EPSG/0/4326"}},
+                    "data":[{"type":"sentinel-2-l2a","dataFilter":{"timeRange":{"from":f"{t0}T00:00:00Z","to":f"{t1}T23:59:59Z"},"maxCloudCoverage":80,"mosaickingOrder":"leastCC"}}]
+                },
+                "evalscript":evalscript,
+                "output":{"width":512,"height":512,"responses":[{"identifier":"default","format":{"type":"image/jpeg"}}]}
+            }
         )
-        
-        tile_r = await client.get(
-            wms_url,
-            headers={"Authorization": f"Bearer {token}"}
-        )
-        
-        from fastapi.responses import Response
-        return Response(
-            content=tile_r.content,
-            media_type="image/jpeg"
-        )
+        return Response(content=process_r.content,media_type="image/jpeg")
+
+
