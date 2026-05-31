@@ -90,7 +90,16 @@ async def wms_tile(
     evalscript = """//VERSION=3
 function setup(){return{input:["B04","B03","B02"],output:{bands:3,sampleType:"UINT8"}}}
 function evaluatePixel(s){
-  return [Math.min(255,s.B04*3.5*255),Math.min(255,s.B03*3.5*255),Math.min(255,s.B02*3.5*255)]
+  function adj(v){
+    v=v*2.5;
+    if(v<=0.0031308)return v*12.92;
+    return 1.055*Math.pow(v,1/2.4)-0.055;
+  }
+  return [
+    Math.round(Math.min(1,adj(s.B04))*255),
+    Math.round(Math.min(1,adj(s.B03))*255),
+    Math.round(Math.min(1,adj(s.B02))*255)
+  ]
 }"""
 
     async with httpx.AsyncClient(timeout=30) as client:
@@ -109,7 +118,7 @@ function evaluatePixel(s){
                     "data":[{"type":"sentinel-2-l2a","dataFilter":{"timeRange":{"from":f"{t0}T00:00:00Z","to":f"{t1}T23:59:59Z"},"maxCloudCoverage":80,"mosaickingOrder":"leastCC"}}]
                 },
                 "evalscript":evalscript,
-                "output":{"width":2048,"height":2048,"responses":[{"identifier":"default","format":{"type":"image/jpeg"}}]}
+                "output":{"width":2500,"height":2500,"responses":[{"identifier":"default","format":{"type":"image/jpeg"}}]}
             }
         )
         return Response(content=process_r.content,media_type="image/jpeg")
