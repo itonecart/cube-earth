@@ -32,26 +32,48 @@ async def get_parcel_at_point(lat, lng, tolerance=0.0001):
     if not features:
         return None
 
-    # Find best match — parcel whose geometry contains the point
-    # For now use smallest area parcel in bbox (most likely exact match)
+    # Find best match using point-in-polygon test
+    def point_in_polygon(lat, lng, polygon_coords):
+        """Ray casting algorithm for point-in-polygon."""
+        inside = False
+        n = len(polygon_coords)
+        j = n - 1
+        for i in range(n):
+            xi, yi = polygon_coords[i]
+            xj, yj = polygon_coords[j]
+            if ((yi > lat) != (yj > lat)) and (lng < (xj - xi) * (lat - yi) / (yj - yi) + xi):
+                inside = not inside
+            j = i
+        return inside
+
     best = None
-    best_area = float('inf')
+    best_fallback = None
+    best_fallback_area = float('inf')
 
     for f in features:
         props = f.get("properties", {})
         crop  = props.get("CROP", "")
+        geom  = f.get("geometry", {})
 
         # Skip non-agricultural features
         if crop.lower() in ("building", "road", "water", ""):
             continue
 
+        # Try exact point-in-polygon first
+        if geom and geom.get("type") == "Polygon":
+            coords = geom.get("coordinates", [[]])[0]
+            if coords and point_in_polygon(lat, lng, coords):
+                best = f
+                break
+
+        # Fallback: closest centroid
         area = float(props.get("CLAIM_AREA") or props.get("DIGITISED") or 0)
-        if area < best_area:
-            best_area = area
-            best = f
+        if area > 0 and area < best_fallback_area:
+            best_fallback_area = area
+            best_fallback = f
 
     if not best:
-        best = features[0]
+        best = best_fallback or features[0]
 
     props = best.get("properties", {})
     geom  = best.get("geometry", {})
