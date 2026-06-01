@@ -54,7 +54,7 @@ function setup(){
   return{
     input:[{bands:["B04","B08"]}],
     output:[
-      {id:"ndvi",bands:1,sampleType:"FLOAT32"},
+      {id:"ndvi",bands:1},
       {id:"dataMask",bands:1}
     ]
   }
