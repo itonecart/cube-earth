@@ -122,12 +122,14 @@ function evaluatePixel(s){
             # Log first interval for debugging
             if intervals:
                 first = intervals[0]
-                first_mean = first.get("outputs",{}).get("ndvi",{}).get("bands",{}).get("B0",{}).get("stats",{}).get("mean")
+                first_mean = first.get("outputs",{}).get("ndvi",{}).get("bands",{}).get("B0",{}).get("stats",{}).get("mean") or first.get("outputs",{}).get("default",{}).get("bands",{}).get("B0",{}).get("stats",{}).get("mean")
                 print(f"DEBUG first interval: {first.get('interval')} mean={first_mean}")
             # Find latest non-NaN interval
             latest = None
             for interval in reversed(intervals):
-                ndvi_mean = interval.get("outputs", {}).get("ndvi", {}).get("bands", {}).get("B0", {}).get("stats", {}).get("mean")
+                out = interval.get("outputs", {})
+                ndvi_mean = (out.get("ndvi",{}).get("bands",{}).get("B0",{}).get("stats",{}).get("mean") or
+                             out.get("default",{}).get("bands",{}).get("B0",{}).get("stats",{}).get("mean"))
                 if ndvi_mean and str(ndvi_mean) != "NaN":
                     latest = interval
                     break
@@ -135,8 +137,10 @@ function evaluatePixel(s){
             if not latest:
                 return {"available": False, "error": "All intervals cloudy"}
 
-            ndvi_stats = latest["outputs"]["ndvi"]["bands"]["B0"]["stats"]
-            ndre_stats = latest["outputs"]["ndre"]["bands"]["B0"]["stats"]
+            out = latest["outputs"]
+            ndvi_stats = (out.get("ndvi",{}).get("bands",{}).get("B0",{}).get("stats") or
+                          out.get("default",{}).get("bands",{}).get("B0",{}).get("stats") or {})
+            ndre_stats = out.get("ndre",{}).get("bands",{}).get("B0",{}).get("stats") or {}
             img_date = latest["interval"]["from"][:10]
 
             ndvi = ndvi_stats.get("mean")
