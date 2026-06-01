@@ -60,13 +60,14 @@ function setup(){
   }
 }
 function evaluatePixel(s){
-  const b8=s.B08[0];
-  const b4=s.B04[0];
-  const sum=b8+b4;
-  if(sum===0) return {ndvi:[0.5],dataMask:[0]};
+  var b8=s.B08[0];
+  var b4=s.B04[0];
+  var sum=b8+b4;
+  var mask=(sum>0.0001)?1:0;
+  var ndvi=mask?(b8-b4)/sum:0;
   return{
-    ndvi:[(b8-b4)/sum],
-    dataMask:[1]
+    ndvi:[ndvi],
+    dataMask:[mask]
   }
 }"""
 
@@ -88,8 +89,8 @@ function evaluatePixel(s){
                     "timeRange": {"from": t_start, "to": t_end},
                     "aggregationInterval": {"of": "P1D"},
                     "evalscript": evalscript,
-                    "width": 64,
-                    "height": 64
+                    "width": 512,
+                    "height": 512
                 },
                 "calculations": {
                     "ndvi": {
@@ -97,11 +98,6 @@ function evaluatePixel(s){
                             "default": {
                                 "percentiles": {"k": [25, 75]}
                             }
-                        }
-                    },
-                    "ndre": {
-                        "statistics": {
-                            "default": {}
                         }
                     }
                 }
