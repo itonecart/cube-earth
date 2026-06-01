@@ -9,7 +9,7 @@ from extractors.base_extractor import BaseExtractor
 from config.settings import settings
 
 TOKEN_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
-PROCESS_URL = "https://sh.dataspace.copernicus.eu/api/v1/process"
+STATISTICS_URL = "https://sh.dataspace.copernicus.eu/api/v1/statistics"
 
 
 class CDSEOpticalExtractor(BaseExtractor):
@@ -87,7 +87,7 @@ function evaluatePixel(s){
 
             async with httpx.AsyncClient(timeout=30) as client:
                 r = await client.post(
-                    PROCESS_URL,
+                    STATISTICS_URL,
                     json=payload,
                     headers={
                         "Authorization": f"Bearer {token}",
