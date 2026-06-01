@@ -117,8 +117,13 @@ function evaluatePixel(s){
 
             intervals = data.get("data", [])
             if not intervals:
-                return {"available": False, "error": "No data returned"}
+                return {"available": False, "error": "No data returned", "raw": data}
 
+            # Log first interval for debugging
+            if intervals:
+                first = intervals[0]
+                first_mean = first.get("outputs",{}).get("ndvi",{}).get("bands",{}).get("B0",{}).get("stats",{}).get("mean")
+                print(f"DEBUG first interval: {first.get('interval')} mean={first_mean}")
             # Find latest non-NaN interval
             latest = None
             for interval in reversed(intervals):
