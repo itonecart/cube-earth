@@ -134,11 +134,10 @@ class GEEOpticalExtractor(BaseExtractor):
                 scale=10
             ).getInfo()
 
-            # Also get stDev for uniformity analysis
+            # Also get stDev + quadrant analysis for uniformity
             try:
                 ndvi_img = composite_img.normalizedDifference(['B8','B4']).rename('ndvi')
-                ndre_img = composite_img.normalizedDifference(['B8A','B5']).rename('ndre')
-                stats = ndvi_img.addBands(ndre_img).reduceRegion(
+                stats = ndvi_img.reduceRegion(
                     reducer=ee.Reducer.stdDev().combine(
                         ee.Reducer.percentile([25,75]), sharedInputs=True
                     ),
@@ -148,10 +147,39 @@ class GEEOpticalExtractor(BaseExtractor):
                 ndvi_std = stats.get('ndvi_stdDev', None)
                 ndvi_p25 = stats.get('ndvi_p25', None)
                 ndvi_p75 = stats.get('ndvi_p75', None)
+
+                # Quadrant analysis — find which zone is lowest
+                bounds = buffer.bounds().getInfo()['coordinates'][0]
+                min_lng = min(c[0] for c in bounds)
+                max_lng = max(c[0] for c in bounds)
+                min_lat = min(c[1] for c in bounds)
+                max_lat = max(c[1] for c in bounds)
+                mid_lng = (min_lng + max_lng) / 2
+                mid_lat = (min_lat + max_lat) / 2
+
+                quadrants = {
+                    'NE': ee.Geometry.Rectangle([mid_lng, mid_lat, max_lng, max_lat]),
+                    'NW': ee.Geometry.Rectangle([min_lng, mid_lat, mid_lng, max_lat]),
+                    'SE': ee.Geometry.Rectangle([mid_lng, min_lat, max_lng, mid_lat]),
+                    'SW': ee.Geometry.Rectangle([min_lng, min_lat, mid_lng, mid_lat]),
+                }
+                quad_ndvi = {}
+                for qname, qgeom in quadrants.items():
+                    try:
+                        qr = ndvi_img.reduceRegion(
+                            reducer=ee.Reducer.mean(),
+                            geometry=qgeom,
+                            scale=10
+                        ).getInfo()
+                        quad_ndvi[qname] = round(qr.get('ndvi', 0) or 0, 3)
+                    except Exception:
+                        quad_ndvi[qname] = None
+
             except Exception:
                 ndvi_std = None
                 ndvi_p25 = None
                 ndvi_p75 = None
+                quad_ndvi = {}
 
             b2  = bands.get('B2', 0) or 0
             b4  = bands.get('B4', 0) or 0
@@ -213,6 +241,7 @@ class GEEOpticalExtractor(BaseExtractor):
                 "ndvi_p25":         round(ndvi_p25, 4) if ndvi_p25 else None,
                 "ndvi_p75":         round(ndvi_p75, 4) if ndvi_p75 else None,
                 "uniformity":       round(max(0, 10 - (ndvi_std * 40)), 1) if ndvi_std else None,
+                "quad_ndvi":        quad_ndvi if quad_ndvi else None,
                 "ndre":             round(ndre, 4),
                 "cire":             round(cire, 4),
                 "evi":              round(evi, 4),

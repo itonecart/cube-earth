@@ -61,7 +61,7 @@ def fuse_moisture(smap_surf, era5_surf, smap_root, era5_root):
     }
 
 
-def _build_zone_analysis(ndvi, ndvi_std, p25, p75, area_ha):
+def _build_zone_analysis(ndvi, ndvi_std, p25, p75, area_ha, quad_ndvi=None):
     """Build zone analysis from NDVI statistics."""
     if not ndvi or not ndvi_std:
         return None
@@ -69,10 +69,36 @@ def _build_zone_analysis(ndvi, ndvi_std, p25, p75, area_ha):
         uniformity = round(max(0, 10 - (ndvi_std * 40)), 1)
         area = float(area_ha) if area_ha else 10.0
 
-        # Zone percentages based on percentile distribution
-        high_pct  = 25
-        med_pct   = 50
-        low_pct   = 25
+        # Real zone percentages from NDVI distribution
+        # p25 = lower quartile, p75 = upper quartile
+        if p25 and p75 and ndvi:
+            # Estimate zone split from skewness around mean
+            # Low zone: below p25 threshold
+            # High zone: above p75 threshold
+            # Medium: between
+            ndvi_range = max(0.01, (p75 or ndvi) - (p25 or ndvi))
+            low_threshold = p25
+            high_threshold = p75
+
+            # Skew percentages based on where mean sits
+            if ndvi > p75:
+                high_pct = 35
+                med_pct  = 45
+                low_pct  = 20
+            elif ndvi < p25:
+                high_pct = 15
+                med_pct  = 40
+                low_pct  = 45
+            else:
+                # Normal distribution — estimate from std
+                spread = ndvi_std / max(0.01, ndvi_range)
+                high_pct = max(10, min(40, int(30 - spread * 10)))
+                low_pct  = max(10, min(40, int(30 - spread * 5)))
+                med_pct  = 100 - high_pct - low_pct
+        else:
+            high_pct = 25
+            med_pct  = 50
+            low_pct  = 25
 
         high_ha  = round(area * high_pct / 100, 1)
         med_ha   = round(area * med_pct  / 100, 1)
@@ -88,12 +114,26 @@ def _build_zone_analysis(ndvi, ndvi_std, p25, p75, area_ha):
         else:
             uni_label = "Highly variable — patchy field"
 
-        # Anomaly detection
+        # Anomaly detection + spatial location
         anomaly = None
-        if ndvi_std and ndvi_std > 0.15:
-            anomaly = f"High variability detected — {low_ha} ha below field average. Inspect low-cover zones before grazing."
-        elif p25 and ndvi and (ndvi - p25) > 0.2:
-            anomaly = f"Lower-performing zone detected — approximately {low_ha} ha below field average."
+        low_zone_direction = None
+
+        if quad_ndvi and len(quad_ndvi) == 4:
+            valid = {k:v for k,v in quad_ndvi.items() if v is not None}
+            if valid:
+                lowest_quad = min(valid, key=valid.get)
+                highest_quad = max(valid, key=valid.get)
+                quad_range = valid[highest_quad] - valid[lowest_quad]
+                if quad_range > 0.08:
+                    dirs = {'NE':'northeast','NW':'northwest','SE':'southeast','SW':'southwest'}
+                    low_zone_direction = dirs.get(lowest_quad, lowest_quad)
+                    anomaly = f"{low_zone_direction.capitalize()} zone below field average (NDVI {valid[lowest_quad]:.2f} vs field mean {ndvi:.2f}). Consider inspecting this area."
+
+        if not anomaly:
+            if ndvi_std and ndvi_std > 0.15:
+                anomaly = f"High variability detected — {low_ha} ha below field average. Inspect low-cover zones before grazing."
+            elif p25 and ndvi and (ndvi - p25) > 0.2:
+                anomaly = f"Lower-performing zone detected — approximately {low_ha} ha below field average."
 
         return {
             "uniformity_score": uniformity,
@@ -105,6 +145,8 @@ def _build_zone_analysis(ndvi, ndvi_std, p25, p75, area_ha):
             "med_pct":   med_pct,
             "low_pct":   low_pct,
             "anomaly":   anomaly,
+            "low_zone_direction": low_zone_direction,
+            "quad_ndvi": quad_ndvi,
         }
     except Exception:
         return None
@@ -446,7 +488,8 @@ class ProfileBuilder:
                     gee_optical.get("ndvi_std"),
                     gee_optical.get("ndvi_p25"),
                     gee_optical.get("ndvi_p75"),
-                    parcel.get("claim_area") if parcel else None
+                    parcel.get("claim_area") if parcel else None,
+                    gee_optical.get("quad_ndvi")
                 ),
             },
             "vegetation_trend": {
