@@ -135,7 +135,9 @@ function evaluatePixel(s){
                     break
 
             if not latest:
-                return {"available": False, "error": "All intervals cloudy"}
+                # Return raw for debugging
+                sample = intervals[-1] if intervals else {}
+                return {"available": False, "error": "All intervals cloudy", "intervals_count": len(intervals), "last_interval": sample.get("interval"), "last_outputs": sample.get("outputs")}
 
             out = latest["outputs"]
             ndvi_stats = (out.get("ndvi",{}).get("bands",{}).get("B0",{}).get("stats") or
