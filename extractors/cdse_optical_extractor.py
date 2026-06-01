@@ -63,11 +63,10 @@ function evaluatePixel(s){
   var b8=s.B08[0];
   var b4=s.B04[0];
   var sum=b8+b4;
-  var mask=(sum>0.0001)?1:0;
-  var ndvi=mask?(b8-b4)/sum:0;
+  var ndvi=(sum!==0)?(b8-b4)/sum:0;
   return{
     ndvi:[ndvi],
-    dataMask:[mask]
+    dataMask:[1]
   }
 }"""
 
