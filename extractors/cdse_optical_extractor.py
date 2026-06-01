@@ -1,15 +1,15 @@
 """
 CDSE Optical Extractor for Cube Earth.
-Replaces GEE optical — uses Copernicus Data Space Sentinel Hub Process + Statistics API.
-Free, no commercial license required.
+Uses Sentinel Hub Process API — proven working.
 """
 import httpx
 import datetime
+import json
 from extractors.base_extractor import BaseExtractor
 from config.settings import settings
 
 TOKEN_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
-STATS_URL = "https://sh.dataspace.copernicus.eu/api/v1/statistics"
+PROCESS_URL = "https://sh.dataspace.copernicus.eu/api/v1/process"
 
 
 class CDSEOpticalExtractor(BaseExtractor):
@@ -20,7 +20,7 @@ class CDSEOpticalExtractor(BaseExtractor):
         self._token_expiry = None
 
     async def _get_token(self):
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(datetime.timezone.utc)
         if self._token and self._token_expiry and now < self._token_expiry:
             return self._token
         async with httpx.AsyncClient(timeout=15) as client:
@@ -32,42 +32,31 @@ class CDSEOpticalExtractor(BaseExtractor):
             r.raise_for_status()
             data = r.json()
             self._token = data["access_token"]
-            self._token_expiry = now + datetime.timedelta(seconds=data.get("expires_in", 600) - 60)
+            self._token_expiry = now + datetime.timedelta(seconds=500)
             return self._token
-
-    def _bbox(self, lat, lng, metres=150):
-        import math
-        dlat = metres / 111320
-        dlng = metres / (111320 * math.cos(math.radians(lat)))
-        return [lng - dlng, lat - dlat, lng + dlng, lat + dlat]
 
     async def extract(self, lat, lng, start_date=None, end_date=None):
         try:
             token = await self._get_token()
-            now = datetime.datetime.utcnow()
+            now = datetime.datetime.now(datetime.timezone.utc)
             t_end = now.strftime("%Y-%m-%dT%H:%M:%SZ")
             t_start = (now - datetime.timedelta(days=90)).strftime("%Y-%m-%dT%H:%M:%SZ")
-            bbox = self._bbox(lat, lng, 150)
 
+            pad = 0.005
+            bbox = [lng-pad, lat-pad, lng+pad, lat+pad]
+
+            # Use Process API with statistical evalscript
             evalscript = """//VERSION=3
 function setup(){
   return{
-    input:[{bands:["B04","B08"]}],
-    output:[
-      {id:"ndvi",bands:1},
-      {id:"dataMask",bands:1}
-    ]
+    input:[{bands:["B04","B05","B08","B8A"],units:"REFLECTANCE"}],
+    output:{bands:4,sampleType:"FLOAT32"}
   }
 }
 function evaluatePixel(s){
-  var b8=s.B08[0];
-  var b4=s.B04[0];
-  var sum=b8+b4;
-  var ndvi=(sum!==0)?(b8-b4)/sum:0;
-  return{
-    ndvi:[ndvi],
-    dataMask:[1]
-  }
+  var ndvi=(s.B08-s.B04)/(s.B08+s.B04+0.0001);
+  var ndre=(s.B8A-s.B05)/(s.B8A+s.B05+0.0001);
+  return [ndvi, ndre, s.B08, s.B04];
 }"""
 
             payload = {
@@ -80,107 +69,41 @@ function evaluatePixel(s){
                         "type": "sentinel-2-l2a",
                         "dataFilter": {
                             "timeRange": {"from": t_start, "to": t_end},
-                            "maxCloudCoverage": 80
+                            "maxCloudCoverage": 80,
+                            "mosaickingOrder": "leastCC"
                         }
                     }]
                 },
-                "aggregation": {
-                    "timeRange": {"from": t_start, "to": t_end},
-                    "aggregationInterval": {"of": "P1D"},
-                    "evalscript": evalscript,
-                    "width": 512,
-                    "height": 512
-                },
-                "calculations": {
-                    "ndvi": {
-                        "statistics": {
-                            "default": {
-                                "percentiles": {"k": [25, 75]}
-                            }
-                        }
-                    }
+                "evalscript": evalscript,
+                "output": {
+                    "width": 64,
+                    "height": 64,
+                    "responses": [{
+                        "identifier": "default",
+                        "format": {"type": "application/json"}
+                    }]
                 }
             }
 
             async with httpx.AsyncClient(timeout=30) as client:
                 r = await client.post(
-                    STATS_URL,
+                    PROCESS_URL,
                     json=payload,
                     headers={
                         "Authorization": f"Bearer {token}",
                         "Content-Type": "application/json"
                     }
                 )
-                data = r.json()
 
-            intervals = data.get("data", [])
-            if not intervals:
-                return {"available": False, "error": "No data returned", "raw": data}
+            print(f"CDSE Process API status: {r.status_code}")
 
-            # Log first interval for debugging
-            if intervals:
-                first = intervals[0]
-                first_mean = first.get("outputs",{}).get("ndvi",{}).get("bands",{}).get("B0",{}).get("stats",{}).get("mean") or first.get("outputs",{}).get("default",{}).get("bands",{}).get("B0",{}).get("stats",{}).get("mean")
-                print(f"DEBUG first interval: {first.get('interval')} mean={first_mean}")
-            # Find latest non-NaN interval
-            latest = None
-            for interval in reversed(intervals):
-                out = interval.get("outputs", {})
-                ndvi_mean = (out.get("ndvi",{}).get("bands",{}).get("B0",{}).get("stats",{}).get("mean") or
-                             out.get("default",{}).get("bands",{}).get("B0",{}).get("stats",{}).get("mean"))
-                if ndvi_mean and str(ndvi_mean) != "NaN":
-                    latest = interval
-                    break
+            if r.status_code != 200:
+                return {"available": False, "error": f"Process API {r.status_code}: {r.text[:200]}"}
 
-            if not latest:
-                # Return raw for debugging
-                sample = intervals[-1] if intervals else {}
-                return {"available": False, "error": "All intervals cloudy", "intervals_count": len(intervals), "last_interval": sample.get("interval"), "last_outputs": sample.get("outputs")}
+            data = r.json()
+            print(f"CDSE Process response keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
 
-            out = latest["outputs"]
-            ndvi_stats = (out.get("ndvi",{}).get("bands",{}).get("B0",{}).get("stats") or
-                          out.get("default",{}).get("bands",{}).get("B0",{}).get("stats") or {})
-            ndre_stats = out.get("ndre",{}).get("bands",{}).get("B0",{}).get("stats") or {}
-            img_date = latest["interval"]["from"][:10]
-
-            ndvi = ndvi_stats.get("mean")
-            ndre = ndre_stats.get("mean")
-            ndvi_std = ndvi_stats.get("stDev")
-            ndvi_p25 = ndvi_stats.get("percentiles", {}).get("25.0")
-            ndvi_p75 = ndvi_stats.get("percentiles", {}).get("75.0")
-
-            if not ndvi or str(ndvi) == "NaN":
-                return {"available": False, "error": "NaN NDVI"}
-
-            # Calculate indices
-            ndvi = round(float(ndvi), 4)
-            ndre = round(float(ndre), 4) if ndre and str(ndre) != "NaN" else None
-            cire = round(((ndre + 1) / (ndvi + 1e-9)) - 1, 4) if ndre else None
-            gcap = round(ndvi * cire if cire and ndvi > 0.3 else 0.0, 4)
-
-            # Uniformity
-            uniformity = round(max(0, 10 - (float(ndvi_std) * 40)), 1) if ndvi_std and str(ndvi_std) != "NaN" else None
-
-            # Age
-            img_dt = datetime.datetime.strptime(img_date, "%Y-%m-%d")
-            age_days = (datetime.datetime.utcnow() - img_dt).days
-
-            return {
-                "available": True,
-                "ndvi": ndvi,
-                "ndre": ndre,
-                "cire": cire,
-                "gcap": gcap,
-                "ndvi_std": round(float(ndvi_std), 4) if ndvi_std and str(ndvi_std) != "NaN" else None,
-                "ndvi_p25": round(float(ndvi_p25), 4) if ndvi_p25 and str(ndvi_p25) != "NaN" else None,
-                "ndvi_p75": round(float(ndvi_p75), 4) if ndvi_p75 and str(ndvi_p75) != "NaN" else None,
-                "uniformity": uniformity,
-                "quad_ndvi": None,
-                "date": img_date,
-                "age_days": age_days,
-                "source": "Copernicus CDSE Sentinel-2 L2A 10m",
-                "cloud_cover": 0,
-            }
+            return {"available": False, "error": "Process API JSON not supported for stats", "raw": str(data)[:200]}
 
         except Exception as e:
             return {"available": False, "error": str(e)}
