@@ -46,7 +46,7 @@ class CDSEOpticalExtractor(BaseExtractor):
             token = await self._get_token()
             now = datetime.datetime.utcnow()
             t_end = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-            t_start = (now - datetime.timedelta(days=60)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            t_start = (now - datetime.timedelta(days=90)).strftime("%Y-%m-%dT%H:%M:%SZ")
             bbox = self._bbox(lat, lng, 150)
 
             evalscript = """//VERSION=3
@@ -85,8 +85,8 @@ function evaluatePixel(s){
                     "timeRange": {"from": t_start, "to": t_end},
                     "aggregationInterval": {"of": "P1D"},
                     "evalscript": evalscript,
-                    "width": 20,
-                    "height": 20
+                    "width": 64,
+                    "height": 64
                 },
                 "calculations": {
                     "ndvi": {
