@@ -134,6 +134,25 @@ class GEEOpticalExtractor(BaseExtractor):
                 scale=10
             ).getInfo()
 
+            # Also get stDev for uniformity analysis
+            try:
+                ndvi_img = composite_img.normalizedDifference(['B8','B4']).rename('ndvi')
+                ndre_img = composite_img.normalizedDifference(['B8A','B5']).rename('ndre')
+                stats = ndvi_img.addBands(ndre_img).reduceRegion(
+                    reducer=ee.Reducer.stdDev().combine(
+                        ee.Reducer.percentile([25,75]), sharedInputs=True
+                    ),
+                    geometry=buffer,
+                    scale=10
+                ).getInfo()
+                ndvi_std = stats.get('ndvi_stdDev', None)
+                ndvi_p25 = stats.get('ndvi_p25', None)
+                ndvi_p75 = stats.get('ndvi_p75', None)
+            except Exception:
+                ndvi_std = None
+                ndvi_p25 = None
+                ndvi_p75 = None
+
             b2  = bands.get('B2', 0) or 0
             b4  = bands.get('B4', 0) or 0
             b5  = bands.get('B5', 0) or 0
@@ -190,6 +209,10 @@ class GEEOpticalExtractor(BaseExtractor):
                 "composite_count":  composite_count,
                 "age_days":         age_days,
                 "ndvi":             round(ndvi, 4),
+                "ndvi_std":         round(ndvi_std, 4) if ndvi_std else None,
+                "ndvi_p25":         round(ndvi_p25, 4) if ndvi_p25 else None,
+                "ndvi_p75":         round(ndvi_p75, 4) if ndvi_p75 else None,
+                "uniformity":       round(max(0, 10 - (ndvi_std * 40)), 1) if ndvi_std else None,
                 "ndre":             round(ndre, 4),
                 "cire":             round(cire, 4),
                 "evi":              round(evi, 4),

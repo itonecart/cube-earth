@@ -61,6 +61,55 @@ def fuse_moisture(smap_surf, era5_surf, smap_root, era5_root):
     }
 
 
+def _build_zone_analysis(ndvi, ndvi_std, p25, p75, area_ha):
+    """Build zone analysis from NDVI statistics."""
+    if not ndvi or not ndvi_std:
+        return None
+    try:
+        uniformity = round(max(0, 10 - (ndvi_std * 40)), 1)
+        area = float(area_ha) if area_ha else 10.0
+
+        # Zone percentages based on percentile distribution
+        high_pct  = 25
+        med_pct   = 50
+        low_pct   = 25
+
+        high_ha  = round(area * high_pct / 100, 1)
+        med_ha   = round(area * med_pct  / 100, 1)
+        low_ha   = round(area * low_pct  / 100, 1)
+
+        # Uniformity label
+        if uniformity >= 8:
+            uni_label = "Very uniform — even grazing recommended"
+        elif uniformity >= 6:
+            uni_label = "Mostly uniform — minor variation"
+        elif uniformity >= 4:
+            uni_label = "Variable — check low-cover zones"
+        else:
+            uni_label = "Highly variable — patchy field"
+
+        # Anomaly detection
+        anomaly = None
+        if ndvi_std and ndvi_std > 0.15:
+            anomaly = f"High variability detected — {low_ha} ha below field average. Inspect low-cover zones before grazing."
+        elif p25 and ndvi and (ndvi - p25) > 0.2:
+            anomaly = f"Lower-performing zone detected — approximately {low_ha} ha below field average."
+
+        return {
+            "uniformity_score": uniformity,
+            "uniformity_label": uni_label,
+            "high_ha":   high_ha,
+            "med_ha":    med_ha,
+            "low_ha":    low_ha,
+            "high_pct":  high_pct,
+            "med_pct":   med_pct,
+            "low_pct":   low_pct,
+            "anomaly":   anomaly,
+        }
+    except Exception:
+        return None
+
+
 class ProfileBuilder:
 
     def __init__(self):
@@ -388,6 +437,17 @@ class ProfileBuilder:
                 "age_days":     optical_age,
                 "source":       optical_source,
                 "gee_optical":  gee_optical.get("available", False),
+                "ndvi_std":     gee_optical.get("ndvi_std"),
+                "ndvi_p25":     gee_optical.get("ndvi_p25"),
+                "ndvi_p75":     gee_optical.get("ndvi_p75"),
+                "uniformity":   gee_optical.get("uniformity"),
+                "zone_analysis": _build_zone_analysis(
+                    ndvi,
+                    gee_optical.get("ndvi_std"),
+                    gee_optical.get("ndvi_p25"),
+                    gee_optical.get("ndvi_p75"),
+                    parcel.get("claim_area") if parcel else None
+                ),
             },
             "vegetation_trend": {
                 "available":    gee_result.get("available", False),
