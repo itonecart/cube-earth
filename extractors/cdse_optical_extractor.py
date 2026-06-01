@@ -46,28 +46,24 @@ class CDSEOpticalExtractor(BaseExtractor):
             token = await self._get_token()
             now = datetime.datetime.utcnow()
             t_end = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-            t_start = (now - datetime.timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            t_start = (now - datetime.timedelta(days=60)).strftime("%Y-%m-%dT%H:%M:%SZ")
             bbox = self._bbox(lat, lng, 150)
 
             evalscript = """//VERSION=3
 function setup(){
   return{
-    input:[{bands:["B04","B05","B06","B08","B8A","B11","SCL"]}],
+    input:[{bands:["B04","B08"]}],
     output:[
-      {id:"ndvi",bands:1},
-      {id:"ndre",bands:1},
+      {id:"ndvi",bands:1,sampleType:"FLOAT32"},
       {id:"dataMask",bands:1}
     ]
   }
 }
 function evaluatePixel(s){
-  const cloud=[3,8,9,10,11].includes(s.SCL[0]);
   const ndvi=(s.B08[0]-s.B04[0])/(s.B08[0]+s.B04[0]+1e-9);
-  const ndre=(s.B8A[0]-s.B05[0])/(s.B8A[0]+s.B05[0]+1e-9);
   return{
     ndvi:[ndvi],
-    ndre:[ndre],
-    dataMask:[cloud?0:1]
+    dataMask:[1]
   }
 }"""
 
