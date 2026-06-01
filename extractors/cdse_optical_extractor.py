@@ -49,14 +49,23 @@ class CDSEOpticalExtractor(BaseExtractor):
 function setup() {
   return {
     input: ["B04", "B08", "SCL"],
-    output: { bands: 1, sampleType: "AUTO" }
+    output: [
+      {id: "ndvi", bands: 1, sampleType: "AUTO"},
+      {id: "dataMask", bands: 1, sampleType: "UINT8"}
+    ]
   };
 }
 function evaluatePixel(sample) {
   if (sample.SCL == 3 || sample.SCL == 4 || sample.SCL == 5) {
-    return [(sample.B08 - sample.B04) / (sample.B08 + sample.B04)];
+    return {
+      ndvi: [(sample.B08 - sample.B04) / (sample.B08 + sample.B04)],
+      dataMask: [1]
+    };
   }
-  return [NaN];
+  return {
+    ndvi: [NaN],
+    dataMask: [0]
+  };
 }"""
 
             payload = {
