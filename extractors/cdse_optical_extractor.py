@@ -52,7 +52,7 @@ class CDSEOpticalExtractor(BaseExtractor):
             evalscript = """//VERSION=3
 function setup(){
   return{
-    input:[{bands:["B04","B08"]}],
+    input:[{bands:["B04","B08","SCL"]}],
     output:[
       {id:"ndvi",bands:1},
       {id:"dataMask",bands:1}
@@ -60,7 +60,12 @@ function setup(){
   }
 }
 function evaluatePixel(s){
-  const ndvi=(s.B08[0]-s.B04[0])/(s.B08[0]+s.B04[0]+1e-9);
+  // Exclude no-data and cloud pixels
+  if(s.B08[0]===0 && s.B04[0]===0) return {ndvi:[0],dataMask:[0]};
+  if([0,1,3,8,9,10].includes(s.SCL[0])) return {ndvi:[0],dataMask:[0]};
+  const sum=s.B08[0]+s.B04[0];
+  if(sum<0.001) return {ndvi:[0],dataMask:[0]};
+  const ndvi=(s.B08[0]-s.B04[0])/sum;
   return{
     ndvi:[ndvi],
     dataMask:[1]
