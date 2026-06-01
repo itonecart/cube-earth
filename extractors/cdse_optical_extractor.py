@@ -40,23 +40,23 @@ class CDSEOpticalExtractor(BaseExtractor):
             token = await self._get_token()
             now = datetime.datetime.now(datetime.timezone.utc)
             t_end = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-            t_start = (now - datetime.timedelta(days=90)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            t_start = (now - datetime.timedelta(days=365)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
             pad = 0.005
             bbox = [lng-pad, lat-pad, lng+pad, lat+pad]
 
-            # Use Process API with statistical evalscript
             evalscript = """//VERSION=3
-function setup(){
-  return{
-    input:[{bands:["B04","B05","B08","B8A"],units:"REFLECTANCE"}],
-    output:{bands:4,sampleType:"FLOAT32"}
-  }
+function setup() {
+  return {
+    input: ["B04", "B08", "SCL"],
+    output: { bands: 1, sampleType: "AUTO" }
+  };
 }
-function evaluatePixel(s){
-  var ndvi=(s.B08-s.B04)/(s.B08+s.B04+0.0001);
-  var ndre=(s.B8A-s.B05)/(s.B8A+s.B05+0.0001);
-  return [ndvi, ndre, s.B08, s.B04];
+function evaluatePixel(sample) {
+  if (sample.SCL == 3 || sample.SCL == 4 || sample.SCL == 5) {
+    return [(sample.B08 - sample.B04) / (sample.B08 + sample.B04)];
+  }
+  return [NaN];
 }"""
 
             payload = {
@@ -69,19 +69,26 @@ function evaluatePixel(s){
                         "type": "sentinel-2-l2a",
                         "dataFilter": {
                             "timeRange": {"from": t_start, "to": t_end},
-                            "maxCloudCoverage": 80,
+                            "maxCloudCoverage": 100,
                             "mosaickingOrder": "leastCC"
                         }
                     }]
                 },
-                "evalscript": evalscript,
-                "output": {
-                    "width": 64,
-                    "height": 64,
-                    "responses": [{
-                        "identifier": "default",
-                        "format": {"type": "application/json"}
-                    }]
+                "aggregation": {
+                    "timeRange": {"from": t_start, "to": t_end},
+                    "aggregationInterval": {"of": "P16D"},
+                    "evalscript": evalscript,
+                    "resx": 0.0001,
+                    "resy": 0.0001
+                },
+                "calculations": {
+                    "ndvi": {
+                        "statistics": {
+                            "default": {
+                                "percentiles": {"k": [25, 75]}
+                            }
+                        }
+                    }
                 }
             }
 
@@ -95,15 +102,38 @@ function evaluatePixel(s){
                     }
                 )
 
-            print(f"CDSE Process API status: {r.status_code}")
+            print(f"CDSE Statistical API status: {r.status_code}")
 
             if r.status_code != 200:
-                return {"available": False, "error": f"Process API {r.status_code}: {r.text[:200]}"}
+                return {"available": False, "error": f"Statistical API {r.status_code}: {r.text[:200]}"}
 
             data = r.json()
-            print(f"CDSE Process response keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
+            print(f"CDSE Statistical response keys: {list(data.keys()) if isinstance(data, dict) else type(data)}")
 
-            return {"available": False, "error": "Process API JSON not supported for stats", "raw": str(data)[:200]}
+            if not data or "data" not in data:
+                return {"available": False, "error": "No data in response", "raw": str(data)[:200]}
+
+            intervals = data.get("data", [])
+            if not intervals:
+                return {"available": False, "error": "No intervals found", "raw": str(data)[:200]}
+
+            for interval in intervals:
+                ndvi_stats = interval.get("outputs", {}).get("ndvi", {}).get("bands", {}).get("B0", {}).get("stats", {})
+                mean = ndvi_stats.get("mean")
+                if mean is not None and str(mean) != "NaN":
+                    return {
+                        "available": True,
+                        "interval": interval.get("interval"),
+                        "ndvi": ndvi_stats
+                    }
+
+            return {
+                "available": False,
+                "error": "All intervals cloudy",
+                "intervals_count": len(intervals),
+                "last_interval": intervals[-1].get("interval") if intervals else None,
+                "last_outputs": intervals[-1].get("outputs") if intervals else None
+            }
 
         except Exception as e:
             return {"available": False, "error": str(e)}
