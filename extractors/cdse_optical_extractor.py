@@ -80,7 +80,7 @@ function evaluatePixel(s){
                     "height": 100,
                     "responses": [{
                         "identifier": "default",
-                        "format": {"type": "application/json"}
+                        "format": {"type": "image/tiff"}
                     }]
                 }
             }
@@ -98,26 +98,40 @@ function evaluatePixel(s){
             if r.status_code != 200:
                 return {"available": False, "error": f"API {r.status_code}: {r.text[:200]}"}
 
-            data = r.json()
+            # Parse TIFF with numpy/PIL
+            try:
+                import io
+                import numpy as np
+                try:
+                    from PIL import Image
+                    img = Image.open(io.BytesIO(r.content))
+                    arr = np.array(img).astype(float)
+                except Exception:
+                    import struct
+                    arr = None
 
-            # Parse pixel array — each pixel is [ndvi_byte, ndre_byte]
-            ndvi_vals = []
-            ndre_vals = []
+                if arr is not None:
+                    if len(arr.shape) == 3:
+                        # Multi-band: band 0 = ndvi_byte, band 1 = ndre_byte
+                        ndvi_band = arr[:,:,0]
+                        ndre_band = arr[:,:,1] if arr.shape[2] > 1 else None
+                    else:
+                        ndvi_band = arr
+                        ndre_band = None
 
-            rows = data if isinstance(data, list) else []
-            for row in rows:
-                if isinstance(row, list):
-                    for pixel in row:
-                        if isinstance(pixel, list) and len(pixel) >= 2:
-                            ndvi = (pixel[0] / 127.5) - 1.0
-                            ndre = (pixel[1] / 127.5) - 1.0
-                            if -1 <= ndvi <= 1:
-                                ndvi_vals.append(ndvi)
-                            if -1 <= ndre <= 1:
-                                ndre_vals.append(ndre)
+                    # Decode from UINT8
+                    ndvi_vals = ((ndvi_band.flatten() / 127.5) - 1.0).tolist()
+                    ndvi_vals = [v for v in ndvi_vals if -1 <= v <= 1]
+                    ndre_vals = ((ndre_band.flatten() / 127.5) - 1.0).tolist() if ndre_band is not None else []
+                    ndre_vals = [v for v in ndre_vals if -1 <= v <= 1]
+                else:
+                    ndvi_vals = []
+                    ndre_vals = []
+            except Exception as pe:
+                return {"available": False, "error": f"Parse error: {pe}"}
 
             if not ndvi_vals:
-                return {"available": False, "error": "No valid pixels", "raw_type": str(type(data)), "raw": str(data)[:200]}
+                return {"available": False, "error": "No valid pixels from TIFF"}
 
             ndvi_vals.sort()
             n = len(ndvi_vals)
