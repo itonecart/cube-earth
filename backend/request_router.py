@@ -22,6 +22,13 @@ class ProfileRequest(BaseModel):
     parcel_override: dict = None
 
 
+@app.get("/test_cdse")
+async def test_cdse(lat: float = 52.05, lng: float = -9.35):
+    from extractors.cdse_optical_extractor import CDSEOpticalExtractor
+    e = CDSEOpticalExtractor()
+    r = await e.extract(lat, lng)
+    return r
+
 @app.api_route("/health", methods=["GET", "HEAD"])
 async def health():
     return {"status": "ok", "service": "cube-earth"}
