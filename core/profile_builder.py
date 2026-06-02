@@ -527,6 +527,10 @@ class ProfileBuilder:
                 "ndvi_p25":     gee_optical.get("ndvi_p25"),
                 "ndvi_p75":     gee_optical.get("ndvi_p75"),
                 "uniformity":   gee_optical.get("uniformity"),
+                "veg_pct":      gee_optical.get("veg_pct"),
+                "non_veg_pct":  gee_optical.get("non_veg_pct"),
+                "grass_ha":     round(float(parcel.get("claim_area",0)) * (gee_optical.get("veg_pct",100)/100), 2) if parcel and gee_optical.get("veg_pct") else None,
+                "non_grass_ha": round(float(parcel.get("claim_area",0)) * (gee_optical.get("non_veg_pct",0)/100), 2) if parcel and gee_optical.get("non_veg_pct") else None,
                 "zone_analysis": _enrich_zone_analysis(
                     _build_zone_analysis(
                         ndvi,
