@@ -529,8 +529,8 @@ class ProfileBuilder:
                 "uniformity":   gee_optical.get("uniformity"),
                 "veg_pct":      gee_optical.get("veg_pct"),
                 "non_veg_pct":  gee_optical.get("non_veg_pct"),
-                "grass_ha":     round(float(parcel.get("claim_area",0)) * (gee_optical.get("veg_pct",100)/100), 2) if parcel and gee_optical.get("veg_pct") else None,
-                "non_grass_ha": round(float(parcel.get("claim_area",0)) * (gee_optical.get("non_veg_pct",0)/100), 2) if parcel and gee_optical.get("non_veg_pct") else None,
+                "grass_ha":     round(float(parcel.get("claim_area") or parcel.get("area") or 0) * (gee_optical.get("veg_pct",100)/100), 2) if parcel and gee_optical.get("veg_pct") else None,
+                "non_grass_ha": round(float(parcel.get("claim_area") or parcel.get("area") or 0) * (gee_optical.get("non_veg_pct",0)/100), 2) if parcel and gee_optical.get("non_veg_pct") else None,
                 "zone_analysis": _enrich_zone_analysis(
                     _build_zone_analysis(
                         ndvi,
