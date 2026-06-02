@@ -67,13 +67,14 @@ def _build_zone_analysis(ndvi, ndvi_std, p25, p75, area_ha, quad_ndvi=None):
         return None
     try:
         # Calibrated uniformity score for Irish grassland
-        # Use IQR (p75-p25) as primary metric — more robust than stDev
+        # Use IQR (p75-p25) as primary metric
         iqr = (p75 - p25) if (p25 and p75) else (ndvi_std * 1.35)
-        # IQR 0.05 = very uniform (score 9)
-        # IQR 0.15 = moderate (score 6)  
-        # IQR 0.25 = variable (score 3)
-        # IQR 0.35+ = very variable (score 1)
-        uniformity = round(max(1, min(10, 10 - (iqr * 25))), 1)
+        # Calibration for typical Irish pasture IQR range 0.10-0.25:
+        # IQR 0.05 → score 9 (very uniform)
+        # IQR 0.15 → score 6 (moderate)
+        # IQR 0.20 → score 4-5 (variable)
+        # IQR 0.30 → score 2-3 (very variable)
+        uniformity = round(max(1, min(10, 10 - (iqr * 18))), 1)
         area = float(area_ha) if area_ha else 10.0
 
         # Real zone percentages from NDVI distribution
