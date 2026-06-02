@@ -41,22 +41,22 @@ class CDSEOpticalExtractor(BaseExtractor):
             pad = 0.005
             bbox = [lng-pad, lat-pad, lng+pad, lat+pad]
 
-            # This evalscript format returned real data previously
+            # Exact evalscript from working Supabase function
             evalscript = """//VERSION=3
 function setup(){
   return{
     input:[{bands:["B04","B08"]}],
     output:[
-      {id:"ndvi",bands:1},
+      {id:"ndvi",bands:1,sampleType:"FLOAT32"},
       {id:"dataMask",bands:1}
     ]
   }
 }
 function evaluatePixel(s){
-  var b8=s.B08[0];
-  var b4=s.B04[0];
-  var ndvi=(b8-b4)/(b8+b4+0.0001);
-  return{ndvi:[ndvi],dataMask:[1]}
+  return{
+    ndvi:[(s.B08[0]-s.B04[0])/(s.B08[0]+s.B04[0]+0.0001)],
+    dataMask:[s.B08[0]>0?1:0]
+  }
 }"""
 
             payload = {
@@ -78,8 +78,8 @@ function evaluatePixel(s){
                     "timeRange": {"from": t_start, "to": t_end},
                     "aggregationInterval": {"of": "P16D"},
                     "evalscript": evalscript,
-                    "resx": 0.0001,
-                    "resy": 0.0001
+                    "width": 100,
+                    "height": 100
                 },
                 "calculations": {
                     "ndvi": {
