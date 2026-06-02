@@ -38,7 +38,7 @@ class CDSEOpticalExtractor(BaseExtractor):
             now = datetime.datetime.now(datetime.timezone.utc)
             t_end = now.strftime("%Y-%m-%dT%H:%M:%SZ")
             t_start = (now - datetime.timedelta(days=90)).strftime("%Y-%m-%dT%H:%M:%SZ")
-            pad = 0.005
+            pad = 0.02
             bbox = [lng-pad, lat-pad, lng+pad, lat+pad]
 
             evalscript = """//VERSION=3
@@ -54,7 +54,7 @@ function setup(){
 function evaluatePixel(s){
   return{
     ndvi:[(s.B08[0]-s.B04[0])/(s.B08[0]+s.B04[0]+0.0001)],
-    dataMask:[s.B08[0]>0?1:0]
+    dataMask:[1]
   }
 }"""
 
