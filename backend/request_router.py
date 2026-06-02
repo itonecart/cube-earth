@@ -107,6 +107,16 @@ function evaluatePixel(s){
   if(ndvi>0.15) return [230,120,0];
   return [200,30,0];
 }"""
+    elif style == "zones":
+        evalscript = """//VERSION=3
+function setup(){return{input:["B04","B08"],output:{bands:3,sampleType:"UINT8"}}}
+function evaluatePixel(s){
+  var ndvi=(s.B08-s.B04)/(s.B08+s.B04+0.0001);
+  // Hard zone boundaries: green/amber/red
+  if(ndvi>0.65) return [0,180,0];
+  if(ndvi>0.45) return [200,160,0];
+  return [200,0,0];
+}"""
     else:
         evalscript = """//VERSION=3
 function setup(){return{input:["B04","B03","B02"],output:{bands:3,sampleType:"UINT8"}}}
