@@ -41,13 +41,12 @@ class CDSEOpticalExtractor(BaseExtractor):
             pad = 0.005
             bbox = [lng-pad, lat-pad, lng+pad, lat+pad]
 
-            # Exact evalscript from working Supabase function
             evalscript = """//VERSION=3
 function setup(){
   return{
     input:[{bands:["B04","B08"]}],
     output:[
-      {id:"ndvi",bands:1,sampleType:"FLOAT32"},
+      {id:"ndvi",bands:1,sampleType:"AUTO"},
       {id:"dataMask",bands:1}
     ]
   }
