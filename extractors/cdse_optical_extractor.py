@@ -108,7 +108,12 @@ function evaluatePixel(s){
             valid = ndvi_arr[(ndvi_arr > -0.9) & (ndvi_arr < 1.0)]
 
             if len(valid) < 10:
-                return {"available": False, "error": "Insufficient valid pixels"}
+                return {"available": False, "error": "Insufficient valid pixels", 
+                        "total_pixels": len(ndvi_arr.flatten()),
+                        "valid_count": len(valid),
+                        "ndvi_min": float(np.min(ndvi_arr)),
+                        "ndvi_max": float(np.max(ndvi_arr)),
+                        "ndvi_mean_raw": float(np.mean(ndvi_arr))}
 
             ndvi_mean = float(np.mean(valid))
             ndvi_std = float(np.std(valid))
