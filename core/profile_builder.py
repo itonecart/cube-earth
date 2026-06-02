@@ -121,7 +121,7 @@ def _build_zone_analysis(ndvi, ndvi_std, p25, p75, area_ha, quad_ndvi=None):
         else:
             uni_label = "Highly variable — patchy field"
 
-        # Anomaly detection + spatial location
+        # Anomaly detection + spatial location + crop-specific advice
         anomaly = None
         low_zone_direction = None
 
@@ -134,13 +134,18 @@ def _build_zone_analysis(ndvi, ndvi_std, p25, p75, area_ha, quad_ndvi=None):
                 if quad_range > 0.08:
                     dirs = {'NE':'northeast','NW':'northwest','SE':'southeast','SW':'southwest'}
                     low_zone_direction = dirs.get(lowest_quad, lowest_quad)
-                    anomaly = f"{low_zone_direction.capitalize()} zone below field average (NDVI {valid[lowest_quad]:.2f} vs field mean {ndvi:.2f}). Consider inspecting this area."
+                    anomaly = f"{low_zone_direction.capitalize()} zone performing below field average (NDVI {valid[lowest_quad]:.2f} vs {ndvi:.2f} mean)."
 
-        if not anomaly:
-            if ndvi_std and ndvi_std > 0.15:
-                anomaly = f"High variability detected — {low_ha} ha below field average. Inspect low-cover zones before grazing."
-            elif p25 and ndvi and (ndvi - p25) > 0.2:
-                anomaly = f"Lower-performing zone detected — approximately {low_ha} ha below field average."
+        if not anomaly and ndvi_std and ndvi_std > 0.12:
+            anomaly = f"{low_ha} ha performing below field average."
+
+        # Add crop-specific action advice
+        if anomaly:
+            crop_lower = (area_ha and str(area_ha) or "").lower()
+            # Will be enriched with crop_class in profile_builder
+            anomaly_action = anomaly  # base — enriched below
+        else:
+            anomaly_action = None
 
         return {
             "uniformity_score": uniformity,
@@ -157,6 +162,37 @@ def _build_zone_analysis(ndvi, ndvi_std, p25, p75, area_ha, quad_ndvi=None):
         }
     except Exception:
         return None
+
+
+def _enrich_zone_analysis(za, crop_class, crop_str):
+    """Add crop-specific action advice to zone analysis."""
+    if not za or not za.get("anomaly"):
+        return za
+    base = za["anomaly"]
+    crop = (crop_str or "").lower()
+    crop_class = crop_class or "unknown"
+
+    if crop_class == "grassland" or "pasture" in crop or "grass" in crop:
+        advice = f"{base} Inspect low-cover zones before next grazing rotation."
+    elif "silage" in crop:
+        advice = f"{base} Check these zones before cutting — variable maturity may affect silage quality."
+    elif "barley" in crop or "wheat" in crop or "oat" in crop:
+        advice = f"{base} Monitor ripening variability — consider targeted fertiliser or fungicide application."
+    elif "beet" in crop or "sugar" in crop:
+        advice = f"{base} Check establishment gaps — poor emergence in low zones may need reseeding."
+    elif "potato" in crop:
+        advice = f"{base} Inspect for waterlogging or disease pressure in low-performing zones."
+    elif "maize" in crop or "corn" in crop:
+        advice = f"{base} Variable canopy — check soil moisture and nutrient availability in low zones."
+    elif "rape" in crop or "canola" in crop:
+        advice = f"{base} Inspect pod-fill variability before harvest planning."
+    elif "broccoli" in crop or "cabbage" in crop or "cauliflower" in crop:
+        advice = f"{base} Check establishment uniformity — variable brassica canopy may indicate pest pressure."
+    else:
+        advice = f"{base} Inspect low-performing zones before next field operation."
+
+    za["anomaly"] = advice
+    return za
 
 
 class ProfileBuilder:
@@ -490,13 +526,17 @@ class ProfileBuilder:
                 "ndvi_p25":     gee_optical.get("ndvi_p25"),
                 "ndvi_p75":     gee_optical.get("ndvi_p75"),
                 "uniformity":   gee_optical.get("uniformity"),
-                "zone_analysis": _build_zone_analysis(
-                    ndvi,
-                    gee_optical.get("ndvi_std"),
-                    gee_optical.get("ndvi_p25"),
-                    gee_optical.get("ndvi_p75"),
-                    parcel.get("claim_area") if parcel else None,
-                    gee_optical.get("quad_ndvi")
+                "zone_analysis": _enrich_zone_analysis(
+                    _build_zone_analysis(
+                        ndvi,
+                        gee_optical.get("ndvi_std"),
+                        gee_optical.get("ndvi_p25"),
+                        gee_optical.get("ndvi_p75"),
+                        parcel.get("claim_area") if parcel else None,
+                        gee_optical.get("quad_ndvi")
+                    ),
+                    crop_class,
+                    crop_str
                 ),
             },
             "vegetation_trend": {
