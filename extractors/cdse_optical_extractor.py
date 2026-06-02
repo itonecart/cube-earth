@@ -104,16 +104,18 @@ function evaluatePixel(s){
             # Decode: NDVI = (pixel/127.5) - 1
             ndvi_arr = (arr / 127.5) - 1.0
 
-            # Filter valid NDVI range
-            valid = ndvi_arr[(ndvi_arr > -0.9) & (ndvi_arr < 1.0)]
+            # Vegetation mask
+            all_pixels = ndvi_arr.flatten()
+            total_pixels = len(all_pixels)
+            vegetated = all_pixels[all_pixels > 0.15]
+            veg_pct = round(len(vegetated) / total_pixels * 100, 1) if total_pixels > 0 else 100
+
+            # Valid pixels for stats
+            valid = all_pixels[(all_pixels > 0.1) & (all_pixels < 1.0)]
 
             if len(valid) < 10:
-                return {"available": False, "error": "Insufficient valid pixels", 
-                        "total_pixels": len(ndvi_arr.flatten()),
-                        "valid_count": len(valid),
-                        "ndvi_min": float(np.min(ndvi_arr)),
-                        "ndvi_max": float(np.max(ndvi_arr)),
-                        "ndvi_mean_raw": float(np.mean(ndvi_arr))}
+                return {"available": False, "error": "Insufficient valid pixels",
+                        "total_pixels": total_pixels, "valid_count": len(valid)}
 
             ndvi_mean = float(np.mean(valid))
             ndvi_std = float(np.std(valid))
@@ -140,7 +142,9 @@ function evaluatePixel(s){
                 "age_days": 0,
                 "source": "Copernicus CDSE Sentinel-2 L2A 10m",
                 "cloud_cover": 0,
-                "sample_count": len(valid)
+                "sample_count": len(valid),
+                "veg_pct": veg_pct,
+                "non_veg_pct": round(100 - veg_pct, 1)
             }
 
         except Exception as e:
