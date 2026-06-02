@@ -48,12 +48,12 @@ class CDSEOpticalExtractor(BaseExtractor):
             evalscript = """//VERSION=3
 function setup(){
   return{
-    input:[{bands:["B04","B08"],units:"REFLECTANCE"}],
+    input:["B04","B08"],
     output:{bands:1,sampleType:"UINT8"}
   }
 }
 function evaluatePixel(s){
-  var ndvi=(s.B08[0]-s.B04[0])/(s.B08[0]+s.B04[0]+0.0001);
+  var ndvi=(s.B08-s.B04)/(s.B08+s.B04+0.0001);
   return[Math.round((ndvi+1)*127.5)];
 }"""
 
