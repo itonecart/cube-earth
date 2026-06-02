@@ -87,14 +87,28 @@ async def wms_tile(
     minlat: float = 52.0,
     maxlng: float = -9.4,
     maxlat: float = 52.1,
-    time: str = "2026-05-01/2026-05-31"
+    time: str = "2026-05-01/2026-05-31",
+    style: str = "rgb"
 ):
-    """Sentinel-2 true color via Process API."""
+    """Sentinel-2 tile via Process API. style=rgb|ndvi"""
     import httpx
     from config.settings import settings
     from fastapi.responses import Response
 
-    evalscript = """//VERSION=3
+    if style == "ndvi":
+        evalscript = """//VERSION=3
+function setup(){return{input:["B04","B08"],output:{bands:3,sampleType:"UINT8"}}}
+function evaluatePixel(s){
+  var ndvi=(s.B08-s.B04)/(s.B08+s.B04+0.0001);
+  if(ndvi>0.75) return [0,200,50];
+  if(ndvi>0.60) return [50,180,0];
+  if(ndvi>0.45) return [150,210,0];
+  if(ndvi>0.30) return [230,200,0];
+  if(ndvi>0.15) return [230,120,0];
+  return [200,30,0];
+}"""
+    else:
+        evalscript = """//VERSION=3
 function setup(){return{input:["B04","B03","B02"],output:{bands:3,sampleType:"UINT8"}}}
 function evaluatePixel(s){
   function adj(v){
