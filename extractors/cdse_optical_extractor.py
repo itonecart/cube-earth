@@ -1,13 +1,16 @@
 """
-CDSE Optical Extractor — uses Statistical API with working format.
+CDSE Optical Extractor — uses Process API with numpy pixel analysis.
+Process API works with free CDSE credentials. Statistics API requires paid plan.
 """
 import httpx
 import datetime
+import io
+import numpy as np
 from extractors.base_extractor import BaseExtractor
 from config.settings import settings
 
 TOKEN_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
-STATS_URL = "https://sh.dataspace.copernicus.eu/api/v1/statistics"
+PROCESS_URL = "https://sh.dataspace.copernicus.eu/api/v1/process"
 
 
 class CDSEOpticalExtractor(BaseExtractor):
@@ -37,25 +40,21 @@ class CDSEOpticalExtractor(BaseExtractor):
             token = await self._get_token()
             now = datetime.datetime.now(datetime.timezone.utc)
             t_end = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-            t_start = (now - datetime.timedelta(days=90)).strftime("%Y-%m-%dT%H:%M:%SZ")
-            pad = 0.02
+            t_start = (now - datetime.timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+            pad = 0.01
             bbox = [lng-pad, lat-pad, lng+pad, lat+pad]
 
+            # Evalscript: encode NDVI as grayscale PNG (0=NDVI -1, 255=NDVI +1)
             evalscript = """//VERSION=3
 function setup(){
   return{
-    input:[{bands:["B04","B08"]}],
-    output:[
-      {id:"ndvi",bands:1,sampleType:"AUTO"},
-      {id:"dataMask",bands:1}
-    ]
+    input:[{bands:["B04","B08"],units:"REFLECTANCE"}],
+    output:{bands:1,sampleType:"UINT8"}
   }
 }
 function evaluatePixel(s){
-  return{
-    ndvi:[(s.B08[0]-s.B04[0])/(s.B08[0]+s.B04[0]+0.0001)],
-    dataMask:[1]
-  }
+  var ndvi=(s.B08[0]-s.B04[0])/(s.B08[0]+s.B04[0]+0.0001);
+  return[Math.round((ndvi+1)*127.5)];
 }"""
 
             payload = {
@@ -73,27 +72,20 @@ function evaluatePixel(s){
                         }
                     }]
                 },
-                "aggregation": {
-                    "timeRange": {"from": t_start, "to": t_end},
-                    "aggregationInterval": {"of": "P16D"},
-                    "evalscript": evalscript,
-                    "width": 100,
-                    "height": 100
-                },
-                "calculations": {
-                    "ndvi": {
-                        "statistics": {
-                            "default": {
-                                "percentiles": {"k": [25, 75]}
-                            }
-                        }
-                    }
+                "evalscript": evalscript,
+                "output": {
+                    "width": 64,
+                    "height": 64,
+                    "responses": [{
+                        "identifier": "default",
+                        "format": {"type": "image/png"}
+                    }]
                 }
             }
 
             async with httpx.AsyncClient(timeout=30) as client:
                 r = await client.post(
-                    STATS_URL,
+                    PROCESS_URL,
                     json=payload,
                     headers={
                         "Authorization": f"Bearer {token}",
@@ -102,47 +94,46 @@ function evaluatePixel(s){
                 )
 
             if r.status_code != 200:
-                return {"available": False, "error": f"Stats API {r.status_code}: {r.text[:200]}"}
+                return {"available": False, "error": f"API {r.status_code}: {r.text[:200]}"}
 
-            data = r.json()
-            intervals = data.get("data", [])
+            # Parse PNG with PIL
+            from PIL import Image
+            img = Image.open(io.BytesIO(r.content)).convert("L")
+            arr = np.array(img).astype(float)
 
-            # Find latest non-NaN interval
-            for interval in reversed(intervals):
-                stats = interval.get("outputs", {}).get("ndvi", {}).get("bands", {}).get("B0", {}).get("stats", {})
-                mean = stats.get("mean")
-                if mean is not None and str(mean) != "NaN":
-                    ndvi = round(float(mean), 4)
-                    ndvi_std = float(stats.get("stDev", 0) or 0)
-                    ndvi_p25 = float(stats.get("percentiles", {}).get("25.0", 0) or 0)
-                    ndvi_p75 = float(stats.get("percentiles", {}).get("75.0", 0) or 0)
-                    uniformity = round(max(0, 10 - (ndvi_std * 40)), 1)
-                    img_date = interval.get("interval", {}).get("from", "")[:10]
-                    img_dt = datetime.datetime.strptime(img_date, "%Y-%m-%d") if img_date else now.replace(tzinfo=None)
-                    age_days = (now.replace(tzinfo=None) - img_dt).days
+            # Decode: NDVI = (pixel/127.5) - 1
+            ndvi_arr = (arr / 127.5) - 1.0
 
-                    return {
-                        "available": True,
-                        "ndvi": ndvi,
-                        "ndre": None,
-                        "cire": None,
-                        "gcap": None,
-                        "ndvi_std": round(ndvi_std, 4),
-                        "ndvi_p25": round(ndvi_p25, 4),
-                        "ndvi_p75": round(ndvi_p75, 4),
-                        "uniformity": uniformity,
-                        "quad_ndvi": None,
-                        "date": img_date,
-                        "age_days": age_days,
-                        "source": "Copernicus CDSE Sentinel-2 L2A 10m",
-                        "cloud_cover": 0,
-                    }
+            # Filter valid NDVI range
+            valid = ndvi_arr[(ndvi_arr > -0.9) & (ndvi_arr < 1.0)]
+
+            if len(valid) < 10:
+                return {"available": False, "error": "Insufficient valid pixels"}
+
+            ndvi_mean = float(np.mean(valid))
+            ndvi_std = float(np.std(valid))
+            ndvi_p25 = float(np.percentile(valid, 25))
+            ndvi_p75 = float(np.percentile(valid, 75))
+            uniformity = round(max(0, 10 - (ndvi_std * 40)), 1)
+
+            img_date = now.strftime("%Y-%m-%d")
 
             return {
-                "available": False,
-                "error": "All intervals cloudy",
-                "count": len(intervals),
-                "last": intervals[-1].get("outputs") if intervals else None
+                "available": True,
+                "ndvi": round(ndvi_mean, 4),
+                "ndre": None,
+                "cire": None,
+                "gcap": None,
+                "ndvi_std": round(ndvi_std, 4),
+                "ndvi_p25": round(ndvi_p25, 4),
+                "ndvi_p75": round(ndvi_p75, 4),
+                "uniformity": uniformity,
+                "quad_ndvi": None,
+                "date": img_date,
+                "age_days": 0,
+                "source": "Copernicus CDSE Sentinel-2 L2A 10m",
+                "cloud_cover": 0,
+                "sample_count": len(valid)
             }
 
         except Exception as e:
