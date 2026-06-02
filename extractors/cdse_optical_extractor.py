@@ -119,7 +119,9 @@ function evaluatePixel(s){
             ndvi_std = float(np.std(valid))
             ndvi_p25 = float(np.percentile(valid, 25))
             ndvi_p75 = float(np.percentile(valid, 75))
-            uniformity = round(max(0, 10 - (ndvi_std * 40)), 1)
+            # Use IQR-based formula matching profile_builder calibration
+            iqr = ndvi_p75 - ndvi_p25 if (ndvi_p25 and ndvi_p75) else ndvi_std * 1.35
+            uniformity = round(max(1, min(10, 10 - (iqr * 18))), 1)
 
             img_date = now.strftime("%Y-%m-%d")
 
