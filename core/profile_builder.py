@@ -66,7 +66,14 @@ def _build_zone_analysis(ndvi, ndvi_std, p25, p75, area_ha, quad_ndvi=None):
     if not ndvi or not ndvi_std:
         return None
     try:
-        uniformity = round(max(0, 10 - (ndvi_std * 40)), 1)
+        # Calibrated uniformity score for Irish grassland
+        # Use IQR (p75-p25) as primary metric — more robust than stDev
+        iqr = (p75 - p25) if (p25 and p75) else (ndvi_std * 1.35)
+        # IQR 0.05 = very uniform (score 9)
+        # IQR 0.15 = moderate (score 6)  
+        # IQR 0.25 = variable (score 3)
+        # IQR 0.35+ = very variable (score 1)
+        uniformity = round(max(1, min(10, 10 - (iqr * 25))), 1)
         area = float(area_ha) if area_ha else 10.0
 
         # Real zone percentages from NDVI distribution
