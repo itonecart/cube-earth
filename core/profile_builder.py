@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime, timezone
 from extractors.era5_extractor import ERA5Extractor
 from extractors.gee_extractor import GEEExtractor
-from extractors.gee_optical_extractor import GEEOpticalExtractor
+from extractors.cdse_optical_extractor import CDSEOpticalExtractor
 from extractors.gee_seasonal_extractor import GEESeasonalExtractor
 from extractors.gee_sar_extractor import GEESARExtractor
 from extractors.gee_thermal_extractor import GEEThermalExtractor
@@ -157,7 +157,7 @@ class ProfileBuilder:
     def __init__(self):
         self.era5      = ERA5Extractor()
         self.gee       = GEEExtractor()
-        self.gee_optical = GEEOpticalExtractor()
+        self.gee_optical = CDSEOpticalExtractor()
         self.gee_seasonal = GEESeasonalExtractor()
         self.gee_sar     = GEESARExtractor()
         self.gee_thermal = GEEThermalExtractor()
