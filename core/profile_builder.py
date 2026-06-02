@@ -1,8 +1,12 @@
 import asyncio
 from datetime import datetime, timezone
 from extractors.era5_extractor import ERA5Extractor
-from extractors.cdse_optical_extractor import CDSEOpticalExtractor
-from extractors.cdse_trend_extractor import CDSETrendExtractor
+from extractors.gee_extractor import GEEExtractor
+from extractors.gee_optical_extractor import GEEOpticalExtractor
+from extractors.gee_seasonal_extractor import GEESeasonalExtractor
+from extractors.gee_sar_extractor import GEESARExtractor
+from extractors.gee_thermal_extractor import GEEThermalExtractor
+from extractors.gee_modis_extractor import GEEMODISExtractor
 from extractors.nasadem_extractor import NASADEMExtractor
 from extractors.hls_extractor import HLSExtractor
 from extractors.sentinel1_extractor import Sentinel1Extractor
@@ -151,9 +155,13 @@ def _build_zone_analysis(ndvi, ndvi_std, p25, p75, area_ha, quad_ndvi=None):
 class ProfileBuilder:
 
     def __init__(self):
-        self.era5        = ERA5Extractor()
-        self.gee_optical = CDSEOpticalExtractor()
-        self.gee         = CDSETrendExtractor()
+        self.era5      = ERA5Extractor()
+        self.gee       = GEEExtractor()
+        self.gee_optical = GEEOpticalExtractor()
+        self.gee_seasonal = GEESeasonalExtractor()
+        self.gee_sar     = GEESARExtractor()
+        self.gee_thermal = GEEThermalExtractor()
+        self.gee_modis   = GEEMODISExtractor()
         self.nasadem   = NASADEMExtractor()
         self.hls       = HLSExtractor()
         self.sentinel1 = Sentinel1Extractor()
@@ -237,7 +245,7 @@ class ProfileBuilder:
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 future = loop.run_in_executor(
                     pool,
-                    lambda: asyncio.run(self.gee.extract(lat, lng))
+                    lambda: asyncio.run(self.gee_seasonal.extract(lat, lng, _current_ndvi))
                 )
                 gee_seasonal_raw = await asyncio.wait_for(future, timeout=12)
         except Exception as _gs:
@@ -246,9 +254,43 @@ class ProfileBuilder:
         gee_seasonal_raw_stored = gee_seasonal_raw
 
         # GEE SAR — replaces CDSE
-        gee_sar = {"available": False}
-        gee_thermal = {"available": False}
-        gee_modis = {"available": False}
+        gee_sar_raw = {"available": False}
+        try:
+            loop = asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = loop.run_in_executor(
+                    pool, lambda: asyncio.run(self.gee_sar.extract(lat, lng))
+                )
+                gee_sar_raw = await asyncio.wait_for(future, timeout=12)
+        except Exception as _gs:
+            gee_sar_raw = {"available": False, "error": str(_gs)}
+        gee_sar = self.gee_sar.parse(gee_sar_raw)
+
+        # GEE Thermal — Landsat fallback for ECOSTRESS
+        gee_thermal_raw = {"available": False}
+        try:
+            loop = asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = loop.run_in_executor(
+                    pool, lambda: asyncio.run(self.gee_thermal.extract(lat, lng))
+                )
+                gee_thermal_raw = await asyncio.wait_for(future, timeout=30)
+        except Exception as _gt:
+            gee_thermal_raw = {"available": False, "error": str(_gt)}
+        gee_thermal = self.gee_thermal.parse(gee_thermal_raw)
+
+        # MODIS — daily LST + NDVI history
+        gee_modis_raw = {"available": False}
+        try:
+            loop = asyncio.get_event_loop()
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = loop.run_in_executor(
+                    pool, lambda: asyncio.run(self.gee_modis.extract(lat, lng, days=14))
+                )
+                gee_modis_raw = await asyncio.wait_for(future, timeout=12)
+        except Exception as _gm:
+            gee_modis_raw = {"available": False, "error": str(_gm)}
+        gee_modis = self.gee_modis.parse(gee_modis_raw)
         eco_raw = await self.ecostress.extract(lat, lng, start, end)
         sar_result  = await extract_s1_backscatter(lat, lng, start, end)
         eco_result = self.ecostress.parse(eco_raw)
@@ -331,7 +373,7 @@ class ProfileBuilder:
         # SINGLE OPTICAL AUTHORITY — all downstream uses unified variables
         # ndvi, ndre, cire, gcap, optical_source, optical_date, optical_age, optical_cloud
         # Now parse seasonal with correct ndvi
-        gee_seasonal = {"available": False}
+        gee_seasonal = self.gee_seasonal.parse(gee_seasonal_raw_stored, current_ndvi=ndvi)
 
         crop_str   = parcel.get("crop") if parcel else None
         crop_info  = classify_crop(crop_str)
