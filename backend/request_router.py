@@ -377,3 +377,4 @@ function evaluatePixel(s){
         return Response(content=process_r.content,media_type="image/jpeg")
 
 
+# wms_proxy added Wed Jun  3 14:35:37 UTC 2026
