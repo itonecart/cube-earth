@@ -249,10 +249,14 @@ async def wms_tile(
     minlat: float = 52.0,
     maxlng: float = -9.4,
     maxlat: float = 52.1,
-    time: str = "2026-05-01/2026-05-31",
+    time: str = "",
     style: str = "rgb"
 ):
     """Sentinel-2 tile via Process API. style=rgb|ndvi"""
+    import datetime as dt
+    if not time:
+        now = dt.datetime.utcnow()
+        time = f"{(now - dt.timedelta(days=60)).strftime('%Y-%m-%d')}/{now.strftime('%Y-%m-%d')}"
     import httpx
     from config.settings import settings
     from fastapi.responses import Response
