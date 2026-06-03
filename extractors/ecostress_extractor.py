@@ -57,7 +57,9 @@ class ECOSTRESSExtractor(BaseExtractor):
                 headers=self._headers(),
                 params=params,
             )
-            r.raise_for_status()
+            if r.status_code == 401:
+                return {"available": False, "error": "NASA token expired"}
+        r.raise_for_status()
         entries = r.json().get("feed", {}).get("entry", [])
 
         def score(e):
