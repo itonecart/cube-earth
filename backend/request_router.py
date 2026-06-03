@@ -44,16 +44,19 @@ async def rgb_xyz(z: int, x: int, y: int):
         return Response(content=b'', media_type='image/jpeg')
 
     evalscript = """//VERSION=3
-function setup(){return{input:[{bands:["B02","B03","B04"],units:"REFLECTANCE"}],output:{bands:3,sampleType:"UINT8"}}}
+function setup(){return{input:[{bands:["B02","B03","B04"]}],output:{bands:3,sampleType:"UINT8"}}}
 function evaluatePixel(s){
-  var gain=3.5,gamma=0.85;
-  var r=Math.pow(Math.min(1,s.B04*gain),gamma);
-  var g=Math.pow(Math.min(1,s.B03*gain),gamma);
-  var b=Math.pow(Math.min(1,s.B02*gain),gamma);
-  var mn=0.05,mx=0.95;
-  return[Math.round(Math.max(0,Math.min(1,(r-mn)/(mx-mn)))*255),
-         Math.round(Math.max(0,Math.min(1,(g-mn)/(mx-mn)))*255),
-         Math.round(Math.max(0,Math.min(1,(b-mn)/(mx-mn)))*255)];
+  // Sentinel-2 DN values are 0-10000, scale to 0-1 then enhance
+  var r=s.B04/10000, g=s.B03/10000, b=s.B02/10000;
+  // Brightness + contrast
+  r=Math.pow(r*4.0, 0.75);
+  g=Math.pow(g*4.0, 0.75);
+  b=Math.pow(b*4.0, 0.75);
+  return[
+    Math.round(Math.max(0,Math.min(1,r))*255),
+    Math.round(Math.max(0,Math.min(1,g))*255),
+    Math.round(Math.max(0,Math.min(1,b))*255)
+  ];
 }"""
 
     now = datetime.datetime.utcnow()
