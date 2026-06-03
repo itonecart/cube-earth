@@ -87,8 +87,14 @@ function evaluatePixel(s){
                 }
             )
         return Response(content=r.content, media_type='image/jpeg')
-    except Exception:
-        return Response(content=b'', media_type='image/jpeg')
+    except Exception as e:
+        print(f"rgb_xyz error z={z} x={x} y={y}: {e}")
+        from PIL import Image
+        import io
+        img = Image.new('RGB',(256,256),(50,50,50))
+        buf = io.BytesIO()
+        img.save(buf,format='JPEG')
+        return Response(content=buf.getvalue(), media_type='image/jpeg')
 
 @app.get("/zone_xyz/{z}/{x}/{y}.png")
 async def zone_xyz(z: int, x: int, y: int):
