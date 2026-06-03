@@ -281,20 +281,30 @@ function evaluatePixel(s){
 }"""
     else:
         evalscript = """//VERSION=3
-function setup(){return{input:["B04","B03","B02"],output:{bands:3,sampleType:"UINT8"}}}
-function evaluatePixel(s){
-  function adj(v){
-    v=v*3.0;
-    if(v<=0.0031308)return v*12.92;
-    v=1.055*Math.pow(v,1/2.4)-0.055;
-    v=(v-0.5)*1.3+0.5;
-    return Math.max(0,Math.min(1,v));
+function setup(){
+  return{
+    input:[{bands:["B02","B03","B04"],units:"REFLECTANCE"}],
+    output:{bands:3,sampleType:"UINT8"}
   }
-  return [
-    Math.round(adj(s.B04)*255),
-    Math.round(adj(s.B03)*255),
-    Math.round(adj(s.B02)*255)
-  ]
+}
+function evaluatePixel(s){
+  // Highlight Optimized Natural Color
+  var r=s.B04, g=s.B03, b=s.B02;
+  // Gain and gamma correction
+  var gain=3.5, gamma=0.85;
+  r=Math.pow(Math.min(1,r*gain),gamma);
+  g=Math.pow(Math.min(1,g*gain),gamma);
+  b=Math.pow(Math.min(1,b*gain),gamma);
+  // Contrast stretch
+  var min=0.05, max=0.95;
+  r=(r-min)/(max-min);
+  g=(g-min)/(max-min);
+  b=(b-min)/(max-min);
+  return[
+    Math.round(Math.max(0,Math.min(1,r))*255),
+    Math.round(Math.max(0,Math.min(1,g))*255),
+    Math.round(Math.max(0,Math.min(1,b))*255)
+  ];
 }"""
 
     async with httpx.AsyncClient(timeout=30) as client:
