@@ -22,6 +22,82 @@ class ProfileRequest(BaseModel):
     parcel_override: dict = None
 
 
+@app.get("/zone_xyz/{z}/{x}/{y}.png")
+async def zone_xyz(z: int, x: int, y: int):
+    """XYZ tile endpoint for variability zones — compatible with L.tileLayer."""
+    import httpx, io, numpy as np, math
+    from PIL import Image
+    from config.settings import settings
+    from fastapi.responses import Response
+
+    # Convert XYZ to bbox
+    def tile_to_bbox(x, y, z):
+        n = 2**z
+        lon_min = x/n*360 - 180
+        lon_max = (x+1)/n*360 - 180
+        lat_max = math.degrees(math.atan(math.sinh(math.pi*(1-2*y/n))))
+        lat_min = math.degrees(math.atan(math.sinh(math.pi*(1-2*(y+1)/n))))
+        return lon_min, lat_min, lon_max, lat_max
+
+    minlng, minlat, maxlng, maxlat = tile_to_bbox(x, y, z)
+
+    # Only render for Ireland bbox
+    if maxlng < -11 or minlng > -5 or maxlat < 51 or minlat > 56:
+        # Return transparent tile
+        img = Image.new('RGBA', (256,256), (0,0,0,0))
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        return Response(content=buf.getvalue(), media_type='image/png')
+
+    evalscript = """//VERSION=3
+function setup(){return{input:[{bands:["B04","B08"],units:"REFLECTANCE"}],output:{bands:1,sampleType:"UINT8"}}}
+function evaluatePixel(s){var ndvi=(s.B08-s.B04)/(s.B08+s.B04+0.0001);return[Math.round((ndvi+1)*127.5)];}"""
+
+    now = __import__('datetime').datetime.utcnow()
+    t_end = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    t_start = (now - __import__('datetime').timedelta(days=60)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            token_r = await client.post(
+                "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token",
+                data={"grant_type":"client_credentials","client_id":settings.CDSE_CLIENT_ID,"client_secret":settings.CDSE_CLIENT_SECRET}
+            )
+            token = token_r.json().get("access_token")
+            r = await client.post(
+                "https://sh.dataspace.copernicus.eu/api/v1/process",
+                headers={"Authorization":f"Bearer {token}","Content-Type":"application/json"},
+                json={
+                    "input":{
+                        "bounds":{"bbox":[minlng,minlat,maxlng,maxlat],"properties":{"crs":"http://www.opengis.net/def/crs/EPSG/0/4326"}},
+                        "data":[{"type":"sentinel-2-l2a","dataFilter":{"timeRange":{"from":t_start,"to":t_end},"maxCloudCoverage":80,"mosaickingOrder":"leastCC"}}]
+                    },
+                    "evalscript":evalscript,
+                    "output":{"width":256,"height":256,"responses":[{"identifier":"default","format":{"type":"image/png"}}]}
+                }
+            )
+        img = Image.open(io.BytesIO(r.content)).convert("L")
+        arr = np.array(img).astype(float)
+        ndvi = (arr/127.5)-1.0
+        veg_mask = ndvi > 0.1
+        veg_pixels = ndvi[veg_mask]
+        out = np.zeros((256,256,4), dtype=np.uint8)
+        if len(veg_pixels) > 10:
+            p_low = np.percentile(veg_pixels, 25)
+            p_high = np.percentile(veg_pixels, 75)
+            out[veg_mask & (ndvi>=p_high)] = [22,163,74,180]
+            out[veg_mask & (ndvi>=p_low) & (ndvi<p_high)] = [217,119,6,180]
+            out[veg_mask & (ndvi<p_low)] = [220,38,38,180]
+        zone_img = Image.fromarray(out,'RGBA')
+        buf = io.BytesIO()
+        zone_img.save(buf, format='PNG')
+        return Response(content=buf.getvalue(), media_type='image/png')
+    except Exception:
+        img = Image.new('RGBA',(256,256),(0,0,0,0))
+        buf = io.BytesIO()
+        img.save(buf,format='PNG')
+        return Response(content=buf.getvalue(),media_type='image/png')
+
 @app.get("/zone_tile")
 async def zone_tile(
     minlng: float = -9.5,
