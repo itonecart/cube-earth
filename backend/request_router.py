@@ -44,18 +44,22 @@ async def rgb_xyz(z: int, x: int, y: int):
         return Response(content=b'', media_type='image/jpeg')
 
     evalscript = """//VERSION=3
-function setup(){return{input:[{bands:["B02","B03","B04"]}],output:{bands:3,sampleType:"UINT8"}}}
+function setup(){
+  return{
+    input:[{bands:["B02","B03","B04"],units:"REFLECTANCE"}],
+    output:{bands:3,sampleType:"UINT8"}
+  }
+}
 function evaluatePixel(s){
-  // Sentinel-2 DN values are 0-10000, scale to 0-1 then enhance
-  var r=s.B04/10000, g=s.B03/10000, b=s.B02/10000;
-  // Brightness + contrast
-  r=Math.pow(r*4.0, 0.75);
-  g=Math.pow(g*4.0, 0.75);
-  b=Math.pow(b*4.0, 0.75);
+  // Values already 0-1 reflectance
+  var r=s.B04, g=s.B03, b=s.B02;
+  // Apply gain and gamma
+  r=Math.min(1,r*2.5); g=Math.min(1,g*2.5); b=Math.min(1,b*2.5);
+  r=Math.pow(r,0.8); g=Math.pow(g,0.8); b=Math.pow(b,0.8);
   return[
-    Math.round(Math.max(0,Math.min(1,r))*255),
-    Math.round(Math.max(0,Math.min(1,g))*255),
-    Math.round(Math.max(0,Math.min(1,b))*255)
+    Math.round(r*255),
+    Math.round(g*255),
+    Math.round(b*255)
   ];
 }"""
 
