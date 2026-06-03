@@ -204,6 +204,16 @@ class ProfileBuilder:
         self.lpis      = LPISClient()
 
     async def build(self, lat, lng, year, parcel_override=None):
+        import traceback
+        try:
+            result = await self._build_internal(lat, lng, year, parcel_override)
+            return result
+        except Exception as e:
+            print(f"ProfileBuilder ERROR: {e}")
+            traceback.print_exc()
+            return {"success": False, "error": str(e)}
+
+    async def _build_internal(self, lat, lng, year, parcel_override=None):
         start = f"{year}-04-01"
         end   = f"{year}-10-31"
 
