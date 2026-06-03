@@ -220,6 +220,50 @@ async def field_profile(req: ProfileRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.get("/wms_proxy")
+async def wms_proxy(
+    request: Request,
+    z: int = 14, x: int = 7764, y: int = 5404,
+    layer: str = "TRUE_COLOR",
+    time: str = ""
+):
+    """Proxy Sentinel Hub WMS tiles with OAuth token."""
+    import httpx, datetime as dt
+    from config.settings import settings
+    from fastapi.responses import Response
+
+    if not time:
+        now = dt.datetime.utcnow()
+        time = f"{(now - dt.timedelta(days=60)).strftime('%Y-%m-%d')}/{now.strftime('%Y-%m-%d')}"
+
+    # Get token
+    async with httpx.AsyncClient(timeout=15) as client:
+        tr = await client.post(
+            "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token",
+            data={"grant_type":"client_credentials","client_id":settings.CDSE_CLIENT_ID,"client_secret":settings.CDSE_CLIENT_SECRET}
+        )
+        token = tr.json().get("access_token")
+
+        # Convert XYZ to bbox
+        import math
+        n = 2**z
+        lon_min = x/n*360 - 180
+        lon_max = (x+1)/n*360 - 180
+        lat_max = math.degrees(math.atan(math.sinh(math.pi*(1-2*y/n))))
+        lat_min = math.degrees(math.atan(math.sinh(math.pi*(1-2*(y+1)/n))))
+
+        r = await client.get(
+            f"https://sh.dataspace.copernicus.eu/ogc/wms/bfba5ae1-06b9-41d1-b2eb-771c247f9ac9",
+            params={
+                "SERVICE":"WMS","VERSION":"1.1.1","REQUEST":"GetMap",
+                "LAYERS":layer,"BBOX":f"{lon_min},{lat_min},{lon_max},{lat_max}",
+                "SRS":"EPSG:4326","WIDTH":"256","HEIGHT":"256",
+                "FORMAT":"image/jpeg","TIME":time,"MAXCC":"20"
+            },
+            headers={"Authorization":f"Bearer {token}"}
+        )
+    return Response(content=r.content, media_type="image/jpeg")
+
 @app.get("/wms_token")
 async def wms_token():
     """Get short-lived token for Sentinel Hub WMS tiles."""
