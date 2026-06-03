@@ -37,11 +37,22 @@ async def rgb_xyz(z: int, x: int, y: int):
         lat_min = math.degrees(math.atan(math.sinh(math.pi*(1-2*(y+1)/n))))
         return lon_min, lat_min, lon_max, lat_max
 
+    def tile_pixel_size(z, lat):
+        """Calculate pixel size in metres for this zoom/lat."""
+        import math
+        earth_circ = 40075016.686
+        return earth_circ * math.cos(math.radians(lat)) / (2**z * 256)
+
     minlng, minlat, maxlng, maxlat = tile_to_bbox(x, y, z)
+    mid_lat = (minlat + maxlat) / 2
 
     # Only render Ireland
     if maxlng < -11 or minlng > -5 or maxlat < 51 or minlat > 56:
         return Response(content=b'', media_type='image/jpeg')
+
+    # Calculate output pixels at native 10m resolution
+    px_size = tile_pixel_size(z, mid_lat)
+    native_pixels = min(1024, max(256, int(256 * 10 / px_size)))
 
     evalscript = """//VERSION=3
 function setup(){
@@ -83,7 +94,7 @@ function evaluatePixel(s){
                         "data":[{"type":"sentinel-2-l2a","dataFilter":{"timeRange":{"from":t_start,"to":t_end},"maxCloudCoverage":80,"mosaickingOrder":"leastCC"}}]
                     },
                     "evalscript":evalscript,
-                    "output":{"width":512,"height":512,"responses":[{"identifier":"default","format":{"type":"image/jpeg","quality":90}}]}
+                    "output":{"width":native_pixels,"height":native_pixels,"responses":[{"identifier":"default","format":{"type":"image/jpeg","quality":90}}]}
                 }
             )
         return Response(content=r.content, media_type='image/jpeg')
