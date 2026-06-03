@@ -252,15 +252,26 @@ async def wms_proxy(
         lat_max = math.degrees(math.atan(math.sinh(math.pi*(1-2*y/n))))
         lat_min = math.degrees(math.atan(math.sinh(math.pi*(1-2*(y+1)/n))))
 
-        r = await client.get(
-            f"https://sh.dataspace.copernicus.eu/ogc/wms/bfba5ae1-06b9-41d1-b2eb-771c247f9ac9",
-            params={
-                "SERVICE":"WMS","VERSION":"1.1.1","REQUEST":"GetMap",
-                "LAYERS":layer,"BBOX":f"{lon_min},{lat_min},{lon_max},{lat_max}",
-                "SRS":"EPSG:4326","WIDTH":"256","HEIGHT":"256",
-                "FORMAT":"image/jpeg","TIME":time,"MAXCC":"20"
-            },
-            headers={"Authorization":f"Bearer {token}"}
+        evalscript = """//VERSION=3
+function setup(){return{input:[{bands:["B02","B03","B04"],units:"REFLECTANCE"}],output:{bands:3,sampleType:"UINT8"}}}
+function evaluatePixel(s){
+  var r=Math.pow(Math.min(1,s.B04*2.5),0.8);
+  var g=Math.pow(Math.min(1,s.B03*2.5),0.8);
+  var b=Math.pow(Math.min(1,s.B02*2.5),0.8);
+  return[Math.round(r*255),Math.round(g*255),Math.round(b*255)];
+}"""
+        t0,t1 = time.split("/") if "/" in time else (time,time)
+        r = await client.post(
+            "https://sh.dataspace.copernicus.eu/api/v1/process",
+            headers={"Authorization":f"Bearer {token}","Content-Type":"application/json"},
+            json={
+                "input":{
+                    "bounds":{"bbox":[lon_min,lat_min,lon_max,lat_max],"properties":{"crs":"http://www.opengis.net/def/crs/EPSG/0/4326"}},
+                    "data":[{"type":"sentinel-2-l2a","dataFilter":{"timeRange":{"from":f"{t0}T00:00:00Z","to":f"{t1}T23:59:59Z"},"maxCloudCoverage":30,"mosaickingOrder":"leastCC"}}]
+                },
+                "evalscript":evalscript,
+                "output":{"width":256,"height":256,"responses":[{"identifier":"default","format":{"type":"image/jpeg","quality":85}}]}
+            }
         )
     return Response(content=r.content, media_type="image/jpeg")
 
