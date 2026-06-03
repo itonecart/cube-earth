@@ -1,12 +1,7 @@
 import asyncio
 from datetime import datetime, timezone
 from extractors.era5_extractor import ERA5Extractor
-from extractors.gee_extractor import GEEExtractor
 from extractors.cdse_optical_extractor import CDSEOpticalExtractor
-from extractors.gee_seasonal_extractor import GEESeasonalExtractor
-from extractors.gee_sar_extractor import GEESARExtractor
-from extractors.gee_thermal_extractor import GEEThermalExtractor
-from extractors.gee_modis_extractor import GEEMODISExtractor
 from extractors.nasadem_extractor import NASADEMExtractor
 from extractors.hls_extractor import HLSExtractor
 from extractors.sentinel1_extractor import Sentinel1Extractor
@@ -200,12 +195,7 @@ class ProfileBuilder:
 
     def __init__(self):
         self.era5      = ERA5Extractor()
-        self.gee       = GEEExtractor()
         self.gee_optical = CDSEOpticalExtractor()
-        self.gee_seasonal = GEESeasonalExtractor()
-        self.gee_sar     = GEESARExtractor()
-        self.gee_thermal = GEEThermalExtractor()
-        self.gee_modis   = GEEMODISExtractor()
         self.nasadem   = NASADEMExtractor()
         self.hls       = HLSExtractor()
         self.sentinel1 = Sentinel1Extractor()
@@ -281,60 +271,33 @@ class ProfileBuilder:
         gee_optical = self.gee_optical.parse(gee_optical_raw)
 
         # Seasonal anomaly — run in background with timeout
-        gee_seasonal_raw = {"available": False}
         try:
             import concurrent.futures
             loop = asyncio.get_event_loop()
             _current_ndvi = gee_optical.get("ndvi")
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                future = loop.run_in_executor(
-                    pool,
-                    lambda: asyncio.run(self.gee_seasonal.extract(lat, lng, _current_ndvi))
-                )
-                gee_seasonal_raw = await asyncio.wait_for(future, timeout=12)
+            pass
         except Exception as _gs:
-            gee_seasonal_raw = {"available": False, "error": str(_gs)}
+            pass
         # Parse seasonal after ndvi is unified below
-        gee_seasonal_raw_stored = gee_seasonal_raw
 
         # GEE SAR — replaces CDSE
-        gee_sar_raw = {"available": False}
-        try:
-            loop = asyncio.get_event_loop()
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                future = loop.run_in_executor(
-                    pool, lambda: asyncio.run(self.gee_sar.extract(lat, lng))
-                )
-                gee_sar_raw = await asyncio.wait_for(future, timeout=12)
-        except Exception as _gs:
-            gee_sar_raw = {"available": False, "error": str(_gs)}
-        gee_sar = self.gee_sar.parse(gee_sar_raw)
+        gee_sar = {"available": False}
 
         # GEE Thermal — Landsat fallback for ECOSTRESS
-        gee_thermal_raw = {"available": False}
         try:
             loop = asyncio.get_event_loop()
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                future = loop.run_in_executor(
-                    pool, lambda: asyncio.run(self.gee_thermal.extract(lat, lng))
-                )
-                gee_thermal_raw = await asyncio.wait_for(future, timeout=30)
+                future = loop.run_in_executor(None, lambda: None)
         except Exception as _gt:
-            gee_thermal_raw = {"available": False, "error": str(_gt)}
-        gee_thermal = self.gee_thermal.parse(gee_thermal_raw)
+            pass
 
         # MODIS — daily LST + NDVI history
-        gee_modis_raw = {"available": False}
         try:
             loop = asyncio.get_event_loop()
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                future = loop.run_in_executor(
-                    pool, lambda: asyncio.run(self.gee_modis.extract(lat, lng, days=14))
-                )
-                gee_modis_raw = await asyncio.wait_for(future, timeout=12)
+                future = loop.run_in_executor(None, lambda: None)
         except Exception as _gm:
-            gee_modis_raw = {"available": False, "error": str(_gm)}
-        gee_modis = self.gee_modis.parse(gee_modis_raw)
+            pass
         eco_raw = await self.ecostress.extract(lat, lng, start, end)
         sar_result  = await extract_s1_backscatter(lat, lng, start, end)
         eco_result = self.ecostress.parse(eco_raw)
@@ -417,7 +380,6 @@ class ProfileBuilder:
         # SINGLE OPTICAL AUTHORITY — all downstream uses unified variables
         # ndvi, ndre, cire, gcap, optical_source, optical_date, optical_age, optical_cloud
         # Now parse seasonal with correct ndvi
-        gee_seasonal = self.gee_seasonal.parse(gee_seasonal_raw_stored, current_ndvi=ndvi)
 
         crop_str   = parcel.get("crop") if parcel else None
         crop_info  = classify_crop(crop_str)
@@ -466,9 +428,7 @@ class ProfileBuilder:
                       sar_extracted=sar_result.get("available") if sar_result else False)
         ecoc    = ecostress_confidence(
                       lst.get("celsius") if lst else None,
-                      lst.get("granule_time") if lst else None,
-                      landsat_lst=gee_thermal.get("lst_celsius") if gee_thermal.get("available") else None,
-                      landsat_age=gee_thermal.get("age_days") if gee_thermal.get("available") else None)
+                      lst.get("granule_time") if lst else None)
         match_dist = parcel.get("_match_distance_m") if parcel else None
         match_qual = parcel.get("_match_quality") if parcel else None
         parcelc = parcel_confidence(area_ha, parcel.get("crop") if parcel else None, match_dist, match_qual)
@@ -478,14 +438,11 @@ class ProfileBuilder:
                       rvi=sar_result.get("rvi") if sar_result else None,
                       vv_db=sar_result.get("vv_db") if sar_result else None,
                       vh_db=sar_result.get("vh_db") if sar_result else None,
-                      s2_age=s2c.get("age_days"),
-                      ecostress_available=(lst is not None and lst.get("available", False)) or gee_thermal.get("available", False))
+                      s2_age=s2c.get("age_days"))
         # Use Landsat thermal date if ECOSTRESS unavailable
         # Only use ECOSTRESS date if actually available
         thermal_date = lst.get("granule_time") if lst and lst.get("available") else None
         # Add Landsat to freshness if available
-        landsat_freshness_date = gee_thermal.get("latest_date") if gee_thermal.get("available") else None
-        landsat_age = gee_thermal.get("age_days") if gee_thermal.get("available") else None
 
         fresh   = freshness_summary(
                       optical_date if use_gee_optical else (best.get("time_start") if best else None),
@@ -574,25 +531,12 @@ class ProfileBuilder:
                     gee_result.get("long_diff"),
                     ndvi,
                     crop_class,
-                    anomaly_pct=gee_seasonal.get("anomaly_pct"),
                     events=gee_result.get("events", []),
                 ),
                 "seasonal": {
-                    "available":     gee_seasonal.get("available", False),
-                    "baseline_mean": gee_seasonal.get("baseline_mean"),
-                    "anomaly_pct":   gee_seasonal.get("anomaly_pct"),
-                    "anomaly_label": gee_seasonal.get("anomaly_label"),
-                    "anomaly_level": gee_seasonal.get("anomaly_level"),
-                    "years_used":    gee_seasonal.get("years_used"),
-                    "yearly_ndvi":   gee_seasonal.get("yearly_ndvi", {}),
                 },
             },
-            "thermal": lst if lst and lst.get("available") else (
-                {**gee_thermal, "source": gee_thermal.get("source", "GEE Landsat Thermal"),
-                 "lst_celsius": gee_thermal.get("lst_celsius"),
-                 "fallback": "landsat"} if gee_thermal.get("available") else {
-                "available": False, "source": "ECOSTRESS/Landsat unavailable"}
-            ),
+            "thermal": lst if lst and lst.get("available") else {"available": False, "source": "ECOSTRESS/Landsat unavailable"},
             "sar": {
                 "available":          gee_sar.get("available") or (sar_result.get("available") if sar_result else False),
                 "vv_db":              gee_sar.get("vv_db") or (sar_result.get("vv_db") if sar_result else None),
@@ -609,14 +553,6 @@ class ProfileBuilder:
                 "gee_sar":            gee_sar.get("available", False),
             },
             "modis": {
-                "available":    gee_modis.get("available", False),
-                "lst_celsius":  gee_modis.get("lst_celsius"),
-                "lst_date":     gee_modis.get("lst_date"),
-                "lst_age_days": gee_modis.get("lst_age_days"),
-                "lst_series":   gee_modis.get("lst_series", []),
-                "modis_ndvi":   gee_modis.get("modis_ndvi"),
-                "modis_ndvi_date": gee_modis.get("modis_ndvi_date"),
-                "source":       gee_modis.get("source", "MODIS Terra"),
             },
             "soil_moisture": {
                 "smap": smap_result,
