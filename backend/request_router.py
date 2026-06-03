@@ -22,6 +22,90 @@ class ProfileRequest(BaseModel):
     parcel_override: dict = None
 
 
+@app.get("/zone_tile")
+async def zone_tile(
+    minlng: float = -9.5,
+    minlat: float = 52.0,
+    maxlng: float = -9.4,
+    maxlat: float = 52.1,
+    time: str = "2026-04-01/2026-06-03"
+):
+    """Returns a relative variability zone PNG — zones based on field's own NDVI distribution."""
+    import httpx, io, numpy as np
+    from PIL import Image
+    from config.settings import settings
+    from fastapi.responses import Response
+
+    # Get NDVI PNG from CDSE
+    evalscript = """//VERSION=3
+function setup(){
+  return{input:[{bands:["B04","B08"],units:"REFLECTANCE"}],output:{bands:1,sampleType:"UINT8"}}
+}
+function evaluatePixel(s){
+  var ndvi=(s.B08-s.B04)/(s.B08+s.B04+0.0001);
+  return[Math.round((ndvi+1)*127.5)];
+}"""
+
+    t0, t1 = time.split("/")
+    async with httpx.AsyncClient(timeout=30) as client:
+        token_r = await client.post(
+            "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token",
+            data={"grant_type":"client_credentials","client_id":settings.CDSE_CLIENT_ID,"client_secret":settings.CDSE_CLIENT_SECRET}
+        )
+        token = token_r.json().get("access_token")
+        r = await client.post(
+            "https://sh.dataspace.copernicus.eu/api/v1/process",
+            headers={"Authorization":f"Bearer {token}","Content-Type":"application/json"},
+            json={
+                "input":{
+                    "bounds":{"bbox":[minlng,minlat,maxlng,maxlat],"properties":{"crs":"http://www.opengis.net/def/crs/EPSG/0/4326"}},
+                    "data":[{"type":"sentinel-2-l2a","dataFilter":{"timeRange":{"from":f"{t0}T00:00:00Z","to":f"{t1}T23:59:59Z"},"maxCloudCoverage":80,"mosaickingOrder":"leastCC"}}]
+                },
+                "evalscript": evalscript,
+                "output":{"width":256,"height":256,"responses":[{"identifier":"default","format":{"type":"image/png"}}]}
+            }
+        )
+
+    # Decode NDVI
+    img = Image.open(io.BytesIO(r.content)).convert("L")
+    arr = np.array(img).astype(float)
+    ndvi = (arr / 127.5) - 1.0
+
+    # Mask non-vegetated pixels
+    veg_mask = ndvi > 0.1
+
+    # Calculate field-relative percentile breaks
+    veg_pixels = ndvi[veg_mask]
+    if len(veg_pixels) < 10:
+        return Response(content=r.content, media_type="image/png")
+
+    p_low  = np.percentile(veg_pixels, 25)
+    p_high = np.percentile(veg_pixels, 75)
+
+    # Create RGB zone image
+    out = np.zeros((256, 256, 4), dtype=np.uint8)
+
+    # High zone — green
+    high = veg_mask & (ndvi >= p_high)
+    out[high] = [22, 163, 74, 200]
+
+    # Medium zone — amber
+    med = veg_mask & (ndvi >= p_low) & (ndvi < p_high)
+    out[med] = [217, 119, 6, 200]
+
+    # Low zone — red
+    low = veg_mask & (ndvi < p_low)
+    out[low] = [220, 38, 38, 200]
+
+    # Non-veg — transparent
+    out[~veg_mask] = [0, 0, 0, 0]
+
+    zone_img = Image.fromarray(out, 'RGBA')
+    buf = io.BytesIO()
+    zone_img.save(buf, format="PNG")
+    buf.seek(0)
+    return Response(content=buf.read(), media_type="image/png")
+
 @app.get("/test_cdse")
 async def test_cdse(lat: float = 52.05, lng: float = -9.35):
     from extractors.cdse_optical_extractor import CDSEOpticalExtractor
