@@ -255,9 +255,11 @@ async def wms_proxy(
         evalscript = """//VERSION=3
 function setup(){return{input:[{bands:["B02","B03","B04"],units:"REFLECTANCE"}],output:{bands:3,sampleType:"UINT8"}}}
 function evaluatePixel(s){
-  var r=Math.pow(Math.min(1,s.B04*4.5),0.7);
-  var g=Math.pow(Math.min(1,s.B03*4.5),0.7);
-  var b=Math.pow(Math.min(1,s.B02*4.5),0.7);
+  // Sentinel Hub viewer-quality enhancement
+  var r=s.B04, g=s.B03, b=s.B02;
+  // Linear stretch + gamma matching Sentinel Hub viewer
+  r=Math.min(1,(r-0.0)*3.5); g=Math.min(1,(g-0.0)*3.5); b=Math.min(1,(b-0.0)*3.5);
+  r=Math.pow(Math.max(0,r),0.75); g=Math.pow(Math.max(0,g),0.75); b=Math.pow(Math.max(0,b),0.75);
   return[Math.round(r*255),Math.round(g*255),Math.round(b*255)];
 }"""
         t0,t1 = time.split("/") if "/" in time else (time,time)
