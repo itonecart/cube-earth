@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime, timezone
 from extractors.era5_extractor import ERA5Extractor
 from extractors.cdse_optical_extractor import CDSEOpticalExtractor
+from extractors.cdse_trend_extractor import CDSETrendExtractor
 from extractors.nasadem_extractor import NASADEMExtractor
 from extractors.hls_extractor import HLSExtractor
 from extractors.sentinel1_extractor import Sentinel1Extractor
@@ -196,6 +197,7 @@ class ProfileBuilder:
     def __init__(self):
         self.era5      = ERA5Extractor()
         self.gee_optical = CDSEOpticalExtractor()
+        self.gee = CDSETrendExtractor()
         self.nasadem   = NASADEMExtractor()
         self.hls       = HLSExtractor()
         self.sentinel1 = Sentinel1Extractor()
