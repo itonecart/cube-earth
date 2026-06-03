@@ -81,6 +81,8 @@ async def wms_token():
             "wms_url": f"https://sh.dataspace.copernicus.eu/ogc/wms/TOKEN?token={token}"
         }
 
+INSTANCE_ID = "bfba5ae1-06b9-41d1-b2eb-771c247f9ac9"
+
 @app.get("/wms_tile")
 async def wms_tile(
     minlng: float = -9.5,
@@ -122,14 +124,16 @@ function evaluatePixel(s){
 function setup(){return{input:["B04","B03","B02"],output:{bands:3,sampleType:"UINT8"}}}
 function evaluatePixel(s){
   function adj(v){
-    v=v*2.5;
+    v=v*3.0;
     if(v<=0.0031308)return v*12.92;
-    return 1.055*Math.pow(v,1/2.4)-0.055;
+    v=1.055*Math.pow(v,1/2.4)-0.055;
+    v=(v-0.5)*1.3+0.5;
+    return Math.max(0,Math.min(1,v));
   }
   return [
-    Math.round(Math.min(1,adj(s.B04))*255),
-    Math.round(Math.min(1,adj(s.B03))*255),
-    Math.round(Math.min(1,adj(s.B02))*255)
+    Math.round(adj(s.B04)*255),
+    Math.round(adj(s.B03)*255),
+    Math.round(adj(s.B02)*255)
   ]
 }"""
 
