@@ -270,7 +270,7 @@ function evaluatePixel(s){
                     "data":[{"type":"sentinel-2-l2a","dataFilter":{"timeRange":{"from":f"{t0}T00:00:00Z","to":f"{t1}T23:59:59Z"},"maxCloudCoverage":30,"mosaickingOrder":"leastCC"}}]
                 },
                 "evalscript":evalscript,
-                "output":{"width":256,"height":256,"responses":[{"identifier":"default","format":{"type":"image/jpeg","quality":85}}]}
+                "output":{"width":512,"height":512,"responses":[{"identifier":"default","format":{"type":"image/jpeg","quality":90}}]}
             }
         )
     return Response(content=r.content, media_type="image/jpeg")
