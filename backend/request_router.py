@@ -22,6 +22,67 @@ class ProfileRequest(BaseModel):
     parcel_override: dict = None
 
 
+@app.get("/rgb_xyz/{z}/{x}/{y}.jpg")
+async def rgb_xyz(z: int, x: int, y: int):
+    """XYZ tile endpoint for Sentinel-2 RGB — proper tiling, no blurring."""
+    import httpx, math, datetime
+    from config.settings import settings
+    from fastapi.responses import Response
+
+    def tile_to_bbox(x, y, z):
+        n = 2**z
+        lon_min = x/n*360 - 180
+        lon_max = (x+1)/n*360 - 180
+        lat_max = math.degrees(math.atan(math.sinh(math.pi*(1-2*y/n))))
+        lat_min = math.degrees(math.atan(math.sinh(math.pi*(1-2*(y+1)/n))))
+        return lon_min, lat_min, lon_max, lat_max
+
+    minlng, minlat, maxlng, maxlat = tile_to_bbox(x, y, z)
+
+    # Only render Ireland
+    if maxlng < -11 or minlng > -5 or maxlat < 51 or minlat > 56:
+        return Response(content=b'', media_type='image/jpeg')
+
+    evalscript = """//VERSION=3
+function setup(){return{input:[{bands:["B02","B03","B04"],units:"REFLECTANCE"}],output:{bands:3,sampleType:"UINT8"}}}
+function evaluatePixel(s){
+  var gain=3.5,gamma=0.85;
+  var r=Math.pow(Math.min(1,s.B04*gain),gamma);
+  var g=Math.pow(Math.min(1,s.B03*gain),gamma);
+  var b=Math.pow(Math.min(1,s.B02*gain),gamma);
+  var mn=0.05,mx=0.95;
+  return[Math.round(Math.max(0,Math.min(1,(r-mn)/(mx-mn)))*255),
+         Math.round(Math.max(0,Math.min(1,(g-mn)/(mx-mn)))*255),
+         Math.round(Math.max(0,Math.min(1,(b-mn)/(mx-mn)))*255)];
+}"""
+
+    now = datetime.datetime.utcnow()
+    t_end = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    t_start = (now - datetime.timedelta(days=60)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            token_r = await client.post(
+                "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token",
+                data={"grant_type":"client_credentials","client_id":settings.CDSE_CLIENT_ID,"client_secret":settings.CDSE_CLIENT_SECRET}
+            )
+            token = token_r.json().get("access_token")
+            r = await client.post(
+                "https://sh.dataspace.copernicus.eu/api/v1/process",
+                headers={"Authorization":f"Bearer {token}","Content-Type":"application/json"},
+                json={
+                    "input":{
+                        "bounds":{"bbox":[minlng,minlat,maxlng,maxlat],"properties":{"crs":"http://www.opengis.net/def/crs/EPSG/0/4326"}},
+                        "data":[{"type":"sentinel-2-l2a","dataFilter":{"timeRange":{"from":t_start,"to":t_end},"maxCloudCoverage":80,"mosaickingOrder":"leastCC"}}]
+                    },
+                    "evalscript":evalscript,
+                    "output":{"width":256,"height":256,"responses":[{"identifier":"default","format":{"type":"image/jpeg","quality":85}}]}
+                }
+            )
+        return Response(content=r.content, media_type='image/jpeg')
+    except Exception:
+        return Response(content=b'', media_type='image/jpeg')
+
 @app.get("/zone_xyz/{z}/{x}/{y}.png")
 async def zone_xyz(z: int, x: int, y: int):
     """XYZ tile endpoint for variability zones — compatible with L.tileLayer."""
