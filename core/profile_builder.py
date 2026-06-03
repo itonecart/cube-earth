@@ -454,7 +454,9 @@ class ProfileBuilder:
         # Use Landsat thermal date if ECOSTRESS unavailable
         # Only use ECOSTRESS date if actually available
         thermal_date = lst.get("granule_time") if lst and lst.get("available") else None
-        # Add Landsat to freshness if available
+        # Landsat freshness — not used but required
+        landsat_freshness_date = None
+        landsat_age = None
 
         fresh   = freshness_summary(
                       optical_date if use_gee_optical else (best.get("time_start") if best else None),
