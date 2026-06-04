@@ -310,7 +310,10 @@ class ProfileBuilder:
                 future = loop.run_in_executor(None, lambda: None)
         except Exception as _gm:
             pass
-        eco_raw = await self.ecostress.extract(lat, lng, start, end)
+        try:
+            eco_raw = await self.ecostress.extract(lat, lng, start, end)
+        except Exception:
+            eco_raw = {"available": False, "error": "ECOSTRESS timeout"}
         sar_result  = await extract_s1_backscatter(lat, lng, start, end)
         eco_result = self.ecostress.parse(eco_raw)
 

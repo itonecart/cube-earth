@@ -51,7 +51,7 @@ class ECOSTRESSExtractor(BaseExtractor):
             "page_size":  50,
             "sort_key":   "-start_date",
         }
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(timeout=8) as client:
             r = await client.get(
                 CMR_URL,
                 headers=self._headers(),
