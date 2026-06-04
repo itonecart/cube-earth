@@ -121,6 +121,14 @@ function evaluatePixel(s){
             ndvi_std = float(np.std(valid))
             ndvi_p25 = float(np.percentile(valid, 25))
             ndvi_p75 = float(np.percentile(valid, 75))
+
+            # Quadrant NDVI from pixel array
+            h, w = ndvi_arr.shape
+            mh, mw = h//2, w//2
+            def qm(arr):
+                v=arr[(arr>0.1)&(arr<1.0)]
+                return round(float(np.mean(v)),3) if len(v)>5 else None
+            quad_ndvi = {'NW':qm(ndvi_arr[:mh,:mw]),'NE':qm(ndvi_arr[:mh,mw:]),'SW':qm(ndvi_arr[mh:,:mw]),'SE':qm(ndvi_arr[mh:,mw:])}
             # Use IQR-based formula matching profile_builder calibration
             iqr = ndvi_p75 - ndvi_p25 if (ndvi_p25 and ndvi_p75) else ndvi_std * 1.35
             uniformity = round(max(1, min(10, 10 - (iqr * 18))), 1)
@@ -137,7 +145,7 @@ function evaluatePixel(s){
                 "ndvi_p25": round(ndvi_p25, 4),
                 "ndvi_p75": round(ndvi_p75, 4),
                 "uniformity": uniformity,
-                "quad_ndvi": None,
+                "quad_ndvi": quad_ndvi,
                 "date": img_date,
                 "age_days": 0,
                 "source": "Copernicus CDSE Sentinel-2 L2A 10m",
