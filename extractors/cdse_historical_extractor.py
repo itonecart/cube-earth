@@ -143,7 +143,10 @@ function evaluatePixel(s){
             anomaly_label = None
             if current_ndvi and mean_ndvi:
                 anomaly_pct = round((current_ndvi - mean_ndvi) / mean_ndvi * 100, 1)
-                if anomaly_pct > 15:
+                if cv >= 15:
+                    # High CV means baseline is unreliable for anomaly detection
+                    anomaly_label = "Variable history — comparison unreliable"
+                elif anomaly_pct > 15:
                     anomaly_label = "Above normal"
                 elif anomaly_pct > 5:
                     anomaly_label = "Slightly above normal"
