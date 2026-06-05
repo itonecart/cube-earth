@@ -155,17 +155,17 @@ function evaluatePixel(s){
                     anomaly_label = "Normal"
 
             # CV interpretation
-            if cv < 10:
-                cv_label = "Very consistent — stable performing field"
+            if cv < 5:
+                cv_label = "Very consistent — field history is highly stable"
                 variability_type = "stable"
-            elif cv < 20:
-                cv_label = "Moderate variation — mainly weather-driven"
+            elif cv < 10:
+                cv_label = "Minor variation — mainly weather-driven, ground inspection recommended"
                 variability_type = "temporary"
-            elif cv < 30:
-                cv_label = "High variation — possible structural issues"
+            elif cv < 15:
+                cv_label = "Recurring variability — investigate persistent causes"
                 variability_type = "mixed"
             else:
-                cv_label = "Very high variation — likely chronic drainage or soil issues"
+                cv_label = "Significant historical variability — low zones may reflect recurring soil or management constraints"
                 variability_type = "chronic"
 
             return {
