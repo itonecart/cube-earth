@@ -1,14 +1,18 @@
 """
 CDSE Trend Extractor for Cube Earth.
-Replaces GEE trend extractor — 90-day NDVI series via Sentinel Hub Statistics API.
+Uses Process API PNG approach — proven working.
+90-day NDVI series via Sentinel Hub.
 """
 import httpx
 import datetime
+import io
+import numpy as np
+from PIL import Image
 from extractors.base_extractor import BaseExtractor
 from config.settings import settings
 
 TOKEN_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
-STATS_URL = "https://sh.dataspace.copernicus.eu/api/v1/statistics"
+PROCESS_URL = "https://sh.dataspace.copernicus.eu/api/v1/process"
 
 
 class CDSETrendExtractor(BaseExtractor):
@@ -19,7 +23,7 @@ class CDSETrendExtractor(BaseExtractor):
         self._token_expiry = None
 
     async def _get_token(self):
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now(datetime.timezone.utc)
         if self._token and self._token_expiry and now < self._token_expiry:
             return self._token
         async with httpx.AsyncClient(timeout=15) as client:
@@ -33,89 +37,68 @@ class CDSETrendExtractor(BaseExtractor):
             self._token_expiry = now + datetime.timedelta(seconds=500)
             return self._token
 
-    def _bbox(self, lat, lng, metres=150):
-        import math
-        dlat = metres / 111320
-        dlng = metres / (111320 * math.cos(math.radians(lat)))
-        return [lng - dlng, lat - dlat, lng + dlng, lat + dlat]
+    async def _get_ndvi(self, lat, lng, date_str, token):
+        """Get NDVI for a specific date using Process API."""
+        pad = 0.005
+        bbox = [lng-pad, lat-pad, lng+pad, lat+pad]
+        t_start = f"{date_str}T00:00:00Z"
+        t_end = f"{date_str}T23:59:59Z"
+
+        evalscript = """//VERSION=3
+function setup(){
+  return{input:[{bands:["B04","B08"]}],output:{bands:1,sampleType:"UINT8"}}
+}
+function evaluatePixel(s){
+  var ndvi=(s.B08-s.B04)/(s.B08+s.B04+0.0001);
+  return[Math.round((ndvi+1)*127.5)];
+}"""
+
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.post(
+                PROCESS_URL,
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={
+                    "input": {
+                        "bounds": {"bbox": bbox, "properties": {"crs": "http://www.opengis.net/def/crs/EPSG/0/4326"}},
+                        "data": [{"type": "sentinel-2-l2a", "dataFilter": {
+                            "timeRange": {"from": t_start, "to": t_end},
+                            "maxCloudCoverage": 80,
+                            "mosaickingOrder": "leastCC"
+                        }}]
+                    },
+                    "evalscript": evalscript,
+                    "output": {"width": 64, "height": 64, "responses": [{"identifier": "default", "format": {"type": "image/png"}}]}
+                }
+            )
+
+        if r.status_code != 200:
+            return None
+
+        img = Image.open(io.BytesIO(r.content)).convert("L")
+        arr = np.array(img).astype(float)
+        ndvi_arr = (arr / 127.5) - 1.0
+        valid = ndvi_arr[(ndvi_arr > 0.1) & (ndvi_arr < 1.0)]
+        if len(valid) < 10:
+            return None
+        return round(float(np.mean(valid)), 3)
 
     async def extract(self, lat, lng, days=90):
         try:
             token = await self._get_token()
-            now = datetime.datetime.utcnow()
-            t_end = now.strftime("%Y-%m-%dT%H:%M:%SZ")
-            t_start = (now - datetime.timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
-            bbox = self._bbox(lat, lng, 150)
-
-            evalscript = """//VERSION=3
-function setup(){
-  return{
-    input:[{bands:["B04","B08","SCL"]}],
-    output:[
-      {id:"ndvi",bands:1},
-      {id:"dataMask",bands:1}
-    ]
-  }
-}
-function evaluatePixel(s){
-  const cloud=[3,8,9,10,11].includes(s.SCL[0]);
-  const ndvi=(s.B08[0]-s.B04[0])/(s.B08[0]+s.B04[0]+1e-9);
-  return{ndvi:[ndvi],dataMask:[cloud?0:1]}
-}"""
-
-            payload = {
-                "input": {
-                    "bounds": {
-                        "bbox": bbox,
-                        "properties": {"crs": "http://www.opengis.net/def/crs/EPSG/0/4326"}
-                    },
-                    "data": [{
-                        "type": "sentinel-2-l2a",
-                        "dataFilter": {
-                            "timeRange": {"from": t_start, "to": t_end},
-                            "maxCloudCoverage": 80
-                        }
-                    }]
-                },
-                "aggregation": {
-                    "timeRange": {"from": t_start, "to": t_end},
-                    "aggregationInterval": {"of": "P5D"},
-                    "evalscript": evalscript,
-                    "width": 10,
-                    "height": 10
-                },
-                "calculations": {
-                    "ndvi": {"statistics": {"default": {}}}
-                }
-            }
-
-            async with httpx.AsyncClient(timeout=30) as client:
-                r = await client.post(
-                    STATS_URL,
-                    json=payload,
-                    headers={
-                        "Authorization": f"Bearer {token}",
-                        "Content-Type": "application/json"
-                    }
-                )
-                data = r.json()
-
-            intervals = data.get("data", [])
-            
-            # Build series — skip NaN
+            now = datetime.datetime.now(datetime.timezone.utc)
             series = []
-            for interval in intervals:
-                mean = interval.get("outputs",{}).get("ndvi",{}).get("bands",{}).get("B0",{}).get("stats",{}).get("mean")
-                if mean and str(mean) != "NaN":
-                    series.append({
-                        "date": interval["interval"]["from"][:10],
-                        "ndvi": round(float(mean), 3)
-                    })
+
+            # Sample every 10 days over the period
+            for i in range(days, -1, -10):
+                date = now - datetime.timedelta(days=i)
+                date_str = date.strftime("%Y-%m-%d")
+                ndvi = await self._get_ndvi(lat, lng, date_str, token)
+                if ndvi is not None:
+                    series.append({"date": date_str, "ndvi": ndvi})
 
             if len(series) < 2:
                 return {"available": False, "error": "Insufficient data"}
 
-            # Calculate trend
             first = series[0]["ndvi"]
             last = series[-1]["ndvi"]
             diff = round(last - first, 3)
@@ -138,10 +121,9 @@ function evaluatePixel(s){
                 trend_label = "Vegetation softening"
             else:
                 long_trend = "stable"
-                trend_arrow = "➡"
+                trend_arrow = "→"
                 trend_label = "Stable vegetation"
 
-            # Detect events
             events = []
             for i in range(1, len(series)):
                 drop = series[i-1]["ndvi"] - series[i]["ndvi"]
