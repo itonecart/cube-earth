@@ -334,6 +334,13 @@ class ProfileBuilder:
             gee_raw = {"available": False, "error": str(_ge)}
         gee_result = self.gee.parse(gee_raw)
 
+        # Historical CV analysis
+        try:
+            historical_raw = await self.historical.extract(lat, lng, years=5)
+            historical_result = self.historical.parse(historical_raw)
+        except Exception as _gh:
+            historical_result = {"available": False, "error": str(_gh)}
+
         indices = None
         if best and hls_result.get("available"):
             try:
