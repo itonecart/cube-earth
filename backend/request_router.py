@@ -182,6 +182,13 @@ function evaluatePixel(s){
     buf.seek(0)
     return Response(content=buf.read(), media_type="image/png")
 
+@app.get("/test_historical")
+async def test_historical(lat: float = 52.10, lng: float = -9.40):
+    from extractors.cdse_historical_extractor import CDSEHistoricalExtractor
+    e = CDSEHistoricalExtractor()
+    r = await e.extract(lat, lng, years=5)
+    return r
+
 @app.get("/test_trend")
 async def test_trend(lat: float = 52.10, lng: float = -9.40):
     from extractors.cdse_trend_extractor import CDSETrendExtractor
