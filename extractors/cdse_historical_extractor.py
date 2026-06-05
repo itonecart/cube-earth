@@ -112,6 +112,14 @@ function evaluatePixel(s){
                 except Exception:
                     continue
 
+            # Filter outliers — likely cloud contamination
+            if len(ndvi_values) >= 3:
+                mean_raw = sum(ndvi_values) / len(ndvi_values)
+                ndvi_values_clean = [v for v in ndvi_values if v >= mean_raw * 0.5]
+                yearly_ndvi = {yr: val for yr, val in yearly_ndvi.items() if val >= mean_raw * 0.5}
+                if len(ndvi_values_clean) >= 2:
+                    ndvi_values = ndvi_values_clean
+
             if len(ndvi_values) < 2:
                 return {"available": False, "error": "Insufficient historical data"}
 
