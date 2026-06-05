@@ -562,6 +562,7 @@ class ProfileBuilder:
                 "seasonal": {
                 },
             },
+            "historical_analysis": historical_result,
             "thermal": lst if lst and lst.get("available") else {"available": False, "source": "ECOSTRESS/Landsat unavailable"},
             "sar": {
                 "available":          gee_sar.get("available") or (sar_result.get("available") if sar_result else False),
