@@ -111,13 +111,13 @@ def _build_zone_analysis(ndvi, ndvi_std, p25, p75, area_ha, quad_ndvi=None):
 
         # Uniformity label
         if uniformity >= 8:
-            uni_label = "Very uniform — even grazing recommended"
+            uni_label = "Very uniform — even cover throughout"
         elif uniformity >= 6:
             uni_label = "Mostly uniform — minor variation"
         elif uniformity >= 4:
-            uni_label = "Variable — check low-cover zones"
+            uni_label = "Variable — some zones underperforming"
         else:
-            uni_label = "Highly variable — patchy field"
+            uni_label = "Uneven cover — zones vary significantly today"
 
         # Anomaly detection + spatial location + crop-specific advice
         anomaly = None
