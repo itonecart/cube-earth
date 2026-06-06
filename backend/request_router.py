@@ -2,6 +2,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from backend.bootstrap import Bootstrap
+from extractors.weather_extractor import get_weather_data
 
 app = FastAPI(title="Cube Earth API")
 
