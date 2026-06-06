@@ -198,7 +198,9 @@ async def test_trend(lat: float = 52.10, lng: float = -9.40):
 
 @app.get("/test_cdse")
 async def test_cdse(lat: float = 52.05, lng: float = -9.35):
-    from extractors.cdse_optical_extractor import CDSEOpticalExtractor
+    from extractors.weather_extractor import get_weather_data
+from extractors.grass_model import estimate_grass_cover
+from extractors.cdse_optical_extractor import CDSEOpticalExtractor
     e = CDSEOpticalExtractor()
     r = await e.extract(lat, lng)
     return r
@@ -228,6 +230,18 @@ async def parcel_at_point(lat: float, lng: float):
 async def field_profile(req: ProfileRequest):
     try:
         result = await service.build_profile(req.lat, req.lng, req.year, parcel_override=req.parcel_override)
+        # Weather + grass model
+        try:
+            weather = get_weather_data(req.lat, req.lng)
+            ndvi = result.get('vegetation', {}).get('ndvi')
+            rvi = result.get('sar', {}).get('rvi')
+            smap = result.get('soil_moisture', {}).get('smap', {}).get('sm_surface_m3')
+            grass = estimate_grass_cover(ndvi, rvi, smap, weather)
+            result['weather'] = weather
+            result['grass_model'] = grass
+        except Exception as e:
+            result['weather'] = {'available': False, 'error': str(e)}
+            result['grass_model'] = {'available': False}
         return {"success": True, **result}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
