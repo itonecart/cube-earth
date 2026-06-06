@@ -198,9 +198,7 @@ async def test_trend(lat: float = 52.10, lng: float = -9.40):
 
 @app.get("/test_cdse")
 async def test_cdse(lat: float = 52.05, lng: float = -9.35):
-    from extractors.weather_extractor import get_weather_data
-from extractors.grass_model import estimate_grass_cover
-from extractors.cdse_optical_extractor import CDSEOpticalExtractor
+    from extractors.cdse_optical_extractor import CDSEOpticalExtractor
     e = CDSEOpticalExtractor()
     r = await e.extract(lat, lng)
     return r
