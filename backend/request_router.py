@@ -407,3 +407,28 @@ function evaluatePixel(s){
 # wms_proxy added Wed Jun  3 14:35:37 UTC 2026
 # Force redeploy Wed Jun  3 20:37:53 UTC 2026
 # redeploy Fri Jun  5 04:44:01 UTC 2026
+
+@app.post("/analyse_photo")
+async def analyse_photo(request: Request):
+    import anthropic, os, json
+    body = await request.json()
+    image_data = body.get("image_data")
+    if not image_data:
+        return {"error": "no image"}
+    try:
+        client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+        message = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=500,
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_data}},
+                    {"type": "text", "text": "You are an expert Irish grassland agronomist. Analyse this field photo. Respond ONLY in JSON: {\"detected\":\"main issue in 2-4 words\",\"confidence\":82,\"species\":[\"species1\"],\"recommendation\":\"one clear action sentence\",\"issue_type\":\"weeds|compaction|thin_sward|overgrazing|drainage|healthy|other\"}"}
+                ]
+            }]
+        )
+        text = message.content[0].text
+        return json.loads(text.replace("```json","").replace("```","").strip())
+    except Exception as e:
+        return {"error": str(e)}
