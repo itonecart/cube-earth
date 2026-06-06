@@ -45,24 +45,8 @@ def estimate_grass_cover(ndvi, rvi, smap_moisture, weather):
 
     # Step 3: Apply agronomic formula
     # (Height cm - 4cm residual) * 250 = kg DM/ha
-    # Seasonal correction: CSH→DM relationship varies with growing season
-    # Based on Peratoner et al. (EGF2021) — seasonal polynomial effect
-    import datetime
-    doy = datetime.datetime.now().timetuple().tm_yday  # day of year
-    # Irish seasonal DM density factor (higher in spring/autumn, lower midsummer)
-    # Spring (60-120): dense vegetative growth ~1.0
-    # Early summer (120-180): transitioning ~1.05
-    # Midsummer (180-240): reproductive growth, stems lighter ~0.92
-    # Autumn (240-300): dense regrowth ~1.0
-    if doy < 60:    seasonal_factor = 0.90   # winter — slow growth
-    elif doy < 120: seasonal_factor = 1.00   # spring — vegetative
-    elif doy < 180: seasonal_factor = 1.05   # late spring/early summer — peak
-    elif doy < 240: seasonal_factor = 0.92   # midsummer — reproductive stems
-    elif doy < 300: seasonal_factor = 1.00   # autumn — regrowth
-    else:           seasonal_factor = 0.90   # late autumn
-
     residual_cm = 4.0
-    kg_dm_ha = max(0, (height_cm_corrected - residual_cm) * 250 * seasonal_factor)
+    kg_dm_ha = max(0, (height_cm_corrected - residual_cm) * 250)
     kg_dm_ha = min(3500, kg_dm_ha)  # cap at realistic max
 
     # Step 4: Weather growth rate modifier
