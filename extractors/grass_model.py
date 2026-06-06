@@ -89,10 +89,51 @@ def estimate_grass_cover(ndvi, rvi, smap_moisture, weather):
         rad = gc.get("radiation_mj_day", 10)
         # Simplified MoSt GG growth function
         # Growth ∝ radiation * temperature_response * biomass_factor
-        temp_factor = max(0, min(1, (avg_temp - 4) / 12))
-        rad_factor = max(0, min(1, rad / 15))
-        biomass_factor = max(0.3, min(1, kg_dm_ha / 2000))  # floor at 0.3 so growth never zeros
-        base_growth_rate = round(80 * temp_factor * rad_factor * biomass_factor * growth_modifier, 1)
+        # MoSt GG Equation 7/8: Growth = PotentialGrowth × fEnv × NdemandSatis
+        # Radiation: Open-Meteo gives MJ/m², convert to J/cm² (1 MJ/m² = 100 J/cm²... actually 1 MJ/m² = 10 J/cm²)
+        rad_j_cm2 = rad * 100  # MJ/m²/day → J/cm²/day (1 MJ/m² = 100 J/cm²)
+
+        # LAI proxy from NDVI (simplified)
+        lai = max(0.1, ndvi * 5) if ndvi else 2.0
+
+        # Potential growth (Equation 8)
+        import math
+        potential_growth = 0.54 * (rad_j_cm2 / 100) * 2.1 * (1 - math.exp(-0.7 * lai)) * 10
+
+        # fEnv: temperature response (Jouven model Irish parameters)
+        # Optimal 10-18°C, base temp 4°C, ceiling 30°C
+        if avg_temp <= 4:
+            f_temp = 0
+        elif avg_temp <= 10:
+            f_temp = (avg_temp - 4) / 6
+        elif avg_temp <= 18:
+            f_temp = 1.0
+        elif avg_temp <= 30:
+            f_temp = 1.0 - (avg_temp - 18) / 12
+        else:
+            f_temp = 0
+
+        # fWater: soil water response using SMAP
+        smap_val = smap_moisture if smap_moisture else 0.25
+        wilting_point = 0.10   # typical Irish mineral soil
+        field_capacity = 0.30
+        saturation = 0.45
+        if smap_val <= wilting_point:
+            f_water = 0.0   # zero growth at wilting point
+        elif smap_val <= field_capacity:
+            f_water = (smap_val - wilting_point) / (field_capacity - wilting_point)
+        elif smap_val <= saturation:
+            f_water = 1.0   # optimal — between FC and saturation
+        else:
+            f_water = 0.8   # waterlogging penalty
+
+        # NdemandSatis: assume adequate N for managed Irish pasture (0.7 default)
+        # Farmers applying 250 kg N/ha → NdemandSatis near 1.0
+        n_demand_satis = 0.75  # conservative for uncalibrated satellite estimate
+
+        f_env = f_temp * f_water
+
+        base_growth_rate = round(max(0, potential_growth * f_env * n_demand_satis * growth_modifier), 1)
 
     # Step 6: 7-day forecast cover
     forecast_cover = None
