@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from backend.bootstrap import Bootstrap
 from extractors.weather_extractor import get_weather_data
+from extractors.grass_model import estimate_grass_cover
 
 app = FastAPI(title="Cube Earth API")
 
