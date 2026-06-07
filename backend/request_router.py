@@ -663,3 +663,24 @@ async def upload_photo(request: Request):
 
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+@app.get("/plate_meter_history")
+async def plate_meter_history(field_id: str = None, session_id: str = None):
+    """Get plate meter reading history for a field"""
+    try:
+        if not supabase:
+            return {"success": False, "error": "Database not configured"}
+
+        query = supabase.table('plate_meter_readings').select('*')
+
+        if field_id:
+            query = query.eq('field_id', field_id)
+        elif session_id:
+            query = query.eq('user_id', session_id)
+
+        result = query.order('created_at', desc=True).limit(20).execute()
+
+        return {"success": True, "readings": result.data}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
