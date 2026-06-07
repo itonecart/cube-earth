@@ -516,29 +516,33 @@ async def load_farm(session_id: str):
         if not supabase:
             return {"success": False, "error": "Database not configured"}
 
-        # Get most recent farm for this session
+        # Get ALL farms for this session
         farm_result = supabase.table('farms')\
             .select('*')\
             .eq('user_id', session_id)\
             .order('created_at', desc=True)\
-            .limit(1)\
             .execute()
 
         if not farm_result.data:
             return {"success": False, "error": "No farm found"}
 
-        farm = farm_result.data[0]
-
-        # Get fields
-        fields_result = supabase.table('cube_fields')\
-            .select('*')\
-            .eq('farm_id', farm['id'])\
-            .execute()
+        # Get fields for all farms
+        all_farms = []
+        for farm in farm_result.data:
+            fields_result = supabase.table('cube_fields')\
+                .select('*')\
+                .eq('farm_id', farm['id'])\
+                .execute()
+            all_farms.append({
+                "farm": farm,
+                "fields": fields_result.data
+            })
 
         return {
             "success": True,
-            "farm": farm,
-            "fields": fields_result.data
+            "farms": all_farms,
+            "farm": farm_result.data[0],
+            "fields": all_farms[0]["fields"] if all_farms else []
         }
 
     except Exception as e:
