@@ -620,3 +620,46 @@ async def save_verification(request: Request):
 
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+@app.post("/upload_photo")
+async def upload_photo(request: Request):
+    """Upload inspection photo to Supabase Storage"""
+    try:
+        body = await request.json()
+        if not supabase:
+            return {"success": False, "error": "Database not configured"}
+
+        import base64, uuid
+        photo_data = body.get('photo_base64', '')
+        session_id = body.get('session_id', 'anonymous')
+        inspection_id = body.get('inspection_id')
+        field_id = body.get('field_id')
+
+        # Strip data URL prefix if present
+        if ',' in photo_data:
+            photo_data = photo_data.split(',')[1]
+
+        # Decode base64
+        photo_bytes = base64.b64decode(photo_data)
+
+        # Generate unique filename
+        filename = f"{session_id}/{uuid.uuid4()}.jpg"
+
+        # Upload to Supabase Storage
+        result = supabase.storage.from_('inspection-photos').upload(
+            filename,
+            photo_bytes,
+            {"content-type": "image/jpeg"}
+        )
+
+        # Get public URL
+        url_result = supabase.storage.from_('inspection-photos').get_public_url(filename)
+
+        return {
+            "success": True,
+            "filename": filename,
+            "url": url_result
+        }
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
