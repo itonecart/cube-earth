@@ -575,8 +575,8 @@ async def save_inspection(request: Request):
             return {"success": False, "error": "Database not configured"}
 
         result = supabase.table('inspections').insert({
-            'field_id': body.get('field_id'),
-            'user_id': body.get('session_id'),
+            'field_id': body.get('field_id') or None,
+            'user_id': body.get('session_id') or 'anonymous',
             'zone': body.get('zone'),
             'ndvi': body.get('ndvi'),
             'field_mean': body.get('field_mean'),
