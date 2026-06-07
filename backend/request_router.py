@@ -673,7 +673,7 @@ async def plate_meter_history(field_id: str = None, session_id: str = None):
 
         query = supabase.table('plate_meter_readings').select('*')
 
-        if field_id:
+        if field_id and field_id.strip():
             query = query.eq('field_id', field_id)
         elif session_id:
             query = query.eq('user_id', session_id)
