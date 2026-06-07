@@ -446,3 +446,173 @@ async def analyse_photo(request: Request):
         return json.loads(text.replace("```json","").replace("```","").strip())
     except Exception as e:
         return {"error": str(e)}
+
+# Supabase client
+import os
+from supabase import create_client
+
+SUPABASE_URL = os.environ.get('SUPABASE_URL')
+SUPABASE_KEY = os.environ.get('SUPABASE_KEY')
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
+
+@app.post("/save_farm")
+async def save_farm(request: Request):
+    """Save farm and fields to Supabase"""
+    try:
+        body = await request.json()
+        session_id = body.get('session_id')
+        farm_data = body.get('farm_data', {})
+        fields = body.get('fields', [])
+
+        if not supabase:
+            return {"success": False, "error": "Database not configured"}
+
+        # Save farm
+        farm_result = supabase.table('farms').insert({
+            'user_id': session_id,
+            'farm_name': farm_data.get('name', 'My Farm'),
+            'county': farm_data.get('county', ''),
+            'enterprise_type': farm_data.get('type', ''),
+            'acres_scheme': farm_data.get('acres', 'no'),
+        }).execute()
+
+        farm_id = farm_result.data[0]['id']
+
+        # Save fields
+        field_rows = []
+        for f in fields:
+            field_rows.append({
+                'farm_id': farm_id,
+                'user_id': session_id,
+                'crop': f.get('crop'),
+                'area': f.get('area'),
+                'olr': f.get('olr'),
+                'lat': f.get('lat'),
+                'lng': f.get('lng'),
+                'eco': f.get('eco', False),
+                'biss': f.get('biss', False),
+                'par_lab': f.get('id'),
+                'geometry': f.get('geometry'),
+                'ndvi': f.get('ndvi'),
+                'cover': f.get('cover'),
+                'status': f.get('status'),
+                'action': f.get('action'),
+                'profile_data': f.get('profileData'),
+            })
+
+        if field_rows:
+            supabase.table('cube_fields').insert(field_rows).execute()
+
+        return {"success": True, "farm_id": farm_id}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.get("/load_farm")
+async def load_farm(session_id: str):
+    """Load farm and fields from Supabase"""
+    try:
+        if not supabase:
+            return {"success": False, "error": "Database not configured"}
+
+        # Get most recent farm for this session
+        farm_result = supabase.table('farms')\
+            .select('*')\
+            .eq('user_id', session_id)\
+            .order('created_at', desc=True)\
+            .limit(1)\
+            .execute()
+
+        if not farm_result.data:
+            return {"success": False, "error": "No farm found"}
+
+        farm = farm_result.data[0]
+
+        # Get fields
+        fields_result = supabase.table('cube_fields')\
+            .select('*')\
+            .eq('farm_id', farm['id'])\
+            .execute()
+
+        return {
+            "success": True,
+            "farm": farm,
+            "fields": fields_result.data
+        }
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/save_plate_meter")
+async def save_plate_meter(request: Request):
+    """Save plate meter reading"""
+    try:
+        body = await request.json()
+        if not supabase:
+            return {"success": False, "error": "Database not configured"}
+
+        result = supabase.table('plate_meter_readings').insert({
+            'field_id': body.get('field_id'),
+            'user_id': body.get('session_id'),
+            'reading_kg_dm_ha': body.get('reading'),
+            'satellite_estimate': body.get('satellite_estimate'),
+        }).execute()
+
+        return {"success": True, "id": result.data[0]['id']}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/save_inspection")
+async def save_inspection(request: Request):
+    """Save inspection to Supabase"""
+    try:
+        body = await request.json()
+        if not supabase:
+            return {"success": False, "error": "Database not configured"}
+
+        result = supabase.table('inspections').insert({
+            'field_id': body.get('field_id'),
+            'user_id': body.get('session_id'),
+            'zone': body.get('zone'),
+            'ndvi': body.get('ndvi'),
+            'field_mean': body.get('field_mean'),
+            'issues': body.get('issues', []),
+            'severity': body.get('severity'),
+            'notes': body.get('notes'),
+            'date': body.get('date'),
+            'lat': body.get('lat'),
+            'lng': body.get('lng'),
+        }).execute()
+
+        return {"success": True, "id": result.data[0]['id']}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/save_verification")
+async def save_verification(request: Request):
+    """Save verification check"""
+    try:
+        body = await request.json()
+        if not supabase:
+            return {"success": False, "error": "Database not configured"}
+
+        result = supabase.table('verifications').insert({
+            'inspection_id': body.get('inspection_id'),
+            'field_id': body.get('field_id'),
+            'user_id': body.get('session_id'),
+            'issue': body.get('issue'),
+            'target_ndvi': body.get('target_ndvi'),
+            'verify_by_date': body.get('verify_by_date'),
+            'status': 'pending',
+        }).execute()
+
+        return {"success": True, "id": result.data[0]['id']}
+
+    except Exception as e:
+        return {"success": False, "error": str(e)}
