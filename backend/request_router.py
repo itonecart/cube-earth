@@ -4,6 +4,7 @@ from pydantic import BaseModel
 from backend.bootstrap import Bootstrap
 from extractors.weather_extractor import get_weather_data
 from extractors.grass_model import estimate_grass_cover
+from extractors.nitrogen_planner import calculate_n_window
 
 app = FastAPI(title="Cube Earth API")
 
