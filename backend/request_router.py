@@ -243,9 +243,9 @@ async def field_profile(req: ProfileRequest):
             result['weather'] = {'available': False, 'error': str(e)}
             result['grass_model'] = {'available': False}
         # Nitrogen planner
-        cover_kg = grass_result.get("kg_dm_ha") if grass_result else None
-        smap_val = smap_result.get("sm_surface_m3") if smap_result else None
-        n_plan = calculate_n_window(weather_result, smap_val, cover_kg, crop)
+        cover_kg = grass.get("kg_dm_ha") if isinstance(grass, dict) else None
+        smap_val = result.get('soil_moisture', {}).get('smap', {}).get('sm_surface_m3')
+        n_plan = calculate_n_window(weather, smap_val, cover_kg, req.parcel_override.get('crop') if req.parcel_override else None)
 
         return {"success": True,
                 "nitrogen": n_plan, **result}
