@@ -64,23 +64,23 @@ def calculate_n_window(weather, soil_moisture, cover_kg=None, crop=None):
     if soil_temp >= 10:
         score += 3
         reasons_good.append(f"🌡 Soil temp {soil_temp}°C — excellent N response expected")
-    elif soil_temp >= 8:
+    elif soil_temp >= 7:
         score += 2
         reasons_good.append(f"🌡 Soil temp {soil_temp}°C — good N response expected")
     elif soil_temp >= 6:
         score += 1
-        reasons_caution.append(f"🌡 Soil temp {soil_temp}°C — borderline, grass responding slowly")
+        reasons_caution.append(f"🌡 Soil temp {soil_temp}°C — borderline, monitor daily")
     else:
         score -= 2
         reasons_bad.append(f"🌡 Soil temp {soil_temp}°C — below 6°C threshold, N will be wasted")
 
     # 2. Rainfall forecast check
-    if rain_48h < 5:
+    if rain_48h < 10:
         score += 2
-        reasons_good.append(f"🌧 Only {rain_48h:.0f}mm forecast in 48hrs — low leaching risk")
+        reasons_good.append(f"🌧 {rain_48h:.0f}mm forecast in 48hrs — low leaching risk")
     elif rain_48h < 15:
         score += 1
-        reasons_caution.append(f"🌧 {rain_48h:.0f}mm forecast — moderate leaching risk")
+        reasons_caution.append(f"🌧 {rain_48h:.0f}mm forecast — moderate leaching risk, apply early morning")
     else:
         score -= 2
         reasons_bad.append(f"🌧 {rain_48h:.0f}mm forecast — high leaching risk, N will wash away")
