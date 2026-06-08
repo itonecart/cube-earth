@@ -26,7 +26,7 @@ def get_weather_data(lat, lng):
             "latitude": lat,
             "longitude": lng,
             "daily": "temperature_2m_max,temperature_2m_min,precipitation_sum,shortwave_radiation_sum,et0_fao_evapotranspiration",
-            "current": "temperature_2m,rain,soil_temperature_0cm",
+            "current": "temperature_2m,rain,soil_temperature_0cm,soil_temperature_6cm,soil_temperature_18cm",
             "timezone": "Europe/Dublin",
             "past_days": 7,
             "forecast_days": 7,
@@ -83,6 +83,8 @@ def get_weather_data(lat, lng):
                 "temp_c": current.get("temperature_2m"),
                 "rain_mm": current.get("rain"),
                 "soil_temp_c": current.get("soil_temperature_0cm"),
+                "soil_temp_6cm": current.get("soil_temperature_6cm"),
+                "soil_temp_18cm": current.get("soil_temperature_18cm"),
             },
             "past_7d": {
                 "avg_temp_c": avg_temp_7d,
