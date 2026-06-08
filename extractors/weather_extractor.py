@@ -83,8 +83,8 @@ def get_weather_data(lat, lng):
                 "temp_c": current.get("temperature_2m"),
                 "rain_mm": current.get("rain"),
                 "soil_temp_c": current.get("soil_temperature_0cm"),
-                "soil_temp_6cm": current.get("soil_temperature_6cm"),
-                "soil_temp_18cm": current.get("soil_temperature_18cm"),
+                "soil_temp_6cm": None,
+                "soil_temp_18cm": None,
             },
             "past_7d": {
                 "avg_temp_c": avg_temp_7d,
@@ -106,6 +106,19 @@ def get_weather_data(lat, lng):
         if len(_weather_cache) > 50:
             oldest = min(_weather_cache.keys(), key=lambda k: _weather_cache[k][0])
             del _weather_cache[oldest]
+
+        # Fetch soil temps separately (default model — UK model lacks soil data)
+        try:
+            soil_url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lng}&current=soil_temperature_0cm,soil_temperature_6cm,soil_temperature_18cm"
+            async with session.get(soil_url) as soil_r:
+                soil_data = await soil_r.json()
+                soil_current = soil_data.get("current", {})
+                if result.get("current"):
+                    result["current"]["soil_temp_6cm"] = soil_current.get("soil_temperature_6cm")
+                    result["current"]["soil_temp_18cm"] = soil_current.get("soil_temperature_18cm")
+                    result["current"]["soil_temp_0cm"] = soil_current.get("soil_temperature_0cm")
+        except Exception:
+            pass
 
         return result
 
