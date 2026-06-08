@@ -242,7 +242,13 @@ async def field_profile(req: ProfileRequest):
         except Exception as e:
             result['weather'] = {'available': False, 'error': str(e)}
             result['grass_model'] = {'available': False}
-        return {"success": True, **result}
+        # Nitrogen planner
+        cover_kg = grass_result.get("kg_dm_ha") if grass_result else None
+        smap_val = smap_result.get("sm_surface_m3") if smap_result else None
+        n_plan = calculate_n_window(weather_result, smap_val, cover_kg, crop)
+
+        return {"success": True,
+                "nitrogen": n_plan, **result}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
