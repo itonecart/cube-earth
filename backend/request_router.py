@@ -1,5 +1,10 @@
 from fastapi import FastAPI, HTTPException, Request
 import gc
+import time
+
+# Simple field profile cache — 5 min TTL
+_profile_cache = {}
+_PROFILE_TTL = 300  # 5 minutes
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from backend.bootstrap import Bootstrap
@@ -232,6 +237,14 @@ async def parcel_at_point(lat: float, lng: float):
 @app.post("/field_profile")
 async def field_profile(req: ProfileRequest):
     try:
+        # Check cache
+        cache_key = f"{round(req.lat,4)}_{round(req.lng,4)}"
+        now = time.time()
+        if cache_key in _profile_cache:
+            ts, cached = _profile_cache[cache_key]
+            if now - ts < _PROFILE_TTL:
+                return cached
+
         result = await service.build_profile(req.lat, req.lng, req.year, parcel_override=req.parcel_override)
         # Weather + grass model
         try:
@@ -257,7 +270,12 @@ async def field_profile(req: ProfileRequest):
                 "nitrogen": n_plan,
                 "slurry": slurry,
                 **result}
-        gc.collect()  # Free numpy arrays
+        # Cache result
+        _profile_cache[cache_key] = (time.time(), response)
+        if len(_profile_cache) > 100:
+            oldest = min(_profile_cache, key=lambda k: _profile_cache[k][0])
+            del _profile_cache[oldest]
+        gc.collect()
         return response
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
