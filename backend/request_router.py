@@ -685,10 +685,3 @@ async def plate_meter_history(field_id: str = None, session_id: str = None):
     except Exception as e:
         return {"success": False, "error": str(e)}
 
-@app.get("/test_s3_olci")
-async def test_s3_olci(lat: float = 52.1, lng: float = -9.5):
-    """Test Sentinel-3 OLCI L2 OGVI extraction"""
-    from extractors.sentinel3_extractor import Sentinel3Extractor
-    extractor = Sentinel3Extractor()
-    result = await extractor.get_ndvi(lat, lng, days_back=15)
-    return result
