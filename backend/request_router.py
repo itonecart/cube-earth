@@ -5,6 +5,7 @@ from backend.bootstrap import Bootstrap
 from extractors.weather_extractor import get_weather_data
 from extractors.grass_model import estimate_grass_cover
 from extractors.nitrogen_planner import calculate_n_window
+from extractors.slurry_planner import calculate_slurry_window
 
 app = FastAPI(title="Cube Earth API")
 
@@ -248,8 +249,13 @@ async def field_profile(req: ProfileRequest):
         smap_val = result.get('soil_moisture', {}).get('smap', {}).get('sm_surface_m3')
         n_plan = calculate_n_window(weather, smap_val, cover_kg, req.parcel_override.get('crop') if req.parcel_override else None)
 
+        # Slurry planner
+        slurry = calculate_slurry_window(weather, smap_val)
+
         return {"success": True,
-                "nitrogen": n_plan, **result}
+                "nitrogen": n_plan,
+                "slurry": slurry,
+                **result}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
