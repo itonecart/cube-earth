@@ -139,15 +139,6 @@ function evaluatePixel(s) {
                         "note": "S3 OLCI L1 B08=665nm B17=865nm"
                     }
                         "available": True,
-                        "ndvi_raw": round(ndvi_raw, 4),
-                        "ndvi_corrected": round(ndvi_corrected, 4),
-                        "red_radiance": round(red_mean, 2),
-                        "nir_radiance": round(nir_mean, 2),
-                        "pixel_count": int(np.sum(valid)),
-                        "resolution_m": 300,
-                        "revisit_days": 2,
-                        "note": "S3 OLCI L1 · B08=665nm Red · B17=865nm NIR · reflectance approximation"
-                    }
 
         except Exception as e:
             return {"available": False, "error": str(e)}
