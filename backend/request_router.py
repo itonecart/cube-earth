@@ -690,5 +690,5 @@ async def test_s3_olci(lat: float = 52.1, lng: float = -9.5):
     """Test Sentinel-3 OLCI L2 OGVI extraction"""
     from extractors.sentinel3_extractor import Sentinel3Extractor
     extractor = Sentinel3Extractor()
-    result = await extractor.get_ogvi(lat, lng, days_back=15)
+    result = await extractor.get_ndvi(lat, lng, days_back=15)
     return result
