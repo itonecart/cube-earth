@@ -124,23 +124,20 @@ function evaluatePixel(s) {
                         return {"available": False, 
                                 "error": f"Unexpected shape: {arr.shape}"}
 
-                    valid = (red_band > 0) & (nir_band > 0) & (ndvi_band > -1)
+                    valid = (ndvi_band > -0.5) & (ndvi_band < 1.0)
                     
                     if not np.any(valid):
                         return {"available": False, "error": "No valid pixels"}
 
-                    red_mean = float(np.mean(red_band[valid]))
-                    nir_mean = float(np.mean(nir_band[valid]))
-                    ndvi_raw = float(np.mean(ndvi_band[valid]))
-
-                    # Dark object subtraction correction
-                    red_min = float(np.percentile(red_band[valid], 2))
-                    nir_min = float(np.percentile(nir_band[valid], 2))
-                    red_cor = max(0.001, red_mean - red_min)
-                    nir_cor = max(0.001, nir_mean - nir_min)
-                    ndvi_corrected = (nir_cor - red_cor) / (nir_cor + red_cor)
-
+                    ndvi_mean = float(np.mean(ndvi_band[valid]))
                     return {
+                        "available": True,
+                        "ndvi_s3": round(ndvi_mean, 4),
+                        "pixel_count": int(np.sum(valid)),
+                        "resolution_m": 300,
+                        "revisit_days": 2,
+                        "note": "S3 OLCI L1 B08=665nm B17=865nm"
+                    }
                         "available": True,
                         "ndvi_raw": round(ndvi_raw, 4),
                         "ndvi_corrected": round(ndvi_corrected, 4),
