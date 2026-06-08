@@ -74,14 +74,14 @@ class Sentinel3Extractor:
                 "evalscript": """//VERSION=3
 function setup() {
   return {
-    input: [{bands: ["Oa08_radiance", "Oa17_radiance", "dataMask"]}],
+    input: [{bands: ["B08", "B17", "dataMask"]}],
     output: {bands: 3, sampleType: "FLOAT32"}
   };
 }
 function evaluatePixel(s) {
   if (s.dataMask === 0) return [-1, -1, 0];
-  var red = s.Oa08_radiance;
-  var nir = s.Oa17_radiance;
+  var red = s.B08;
+  var nir = s.B17;
   var ndvi = (nir - red) / (nir + red + 0.0001);
   return [red, nir, ndvi];
 }"""
