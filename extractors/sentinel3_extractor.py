@@ -1,11 +1,12 @@
 """
-Sentinel-3 OLCI L2 Extractor
-Uses CDSE Process API to get OGVI (vegetation index) and OTCI (chlorophyll)
-300m resolution, 2-day revisit
+Sentinel-3 OLCI Extractor
+Uses L1 radiance bands with dark object subtraction
+Oa08 = 665nm Red, Oa17 = 865nm NIR
 """
 import datetime
 import numpy as np
 import os
+import io
 
 TOKEN_URL = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
 PROCESS_URL = "https://sh.dataspace.copernicus.eu/api/v1/process"
@@ -16,7 +17,7 @@ class Sentinel3Extractor:
         self._token_expiry = None
 
     async def _get_token(self):
-        import aiohttp, datetime
+        import aiohttp
         now = datetime.datetime.utcnow()
         if self._token and self._token_expiry and now < self._token_expiry:
             return self._token
@@ -32,10 +33,10 @@ class Sentinel3Extractor:
                 self._token_expiry = now + datetime.timedelta(seconds=500)
                 return self._token
 
-    async def get_ogvi(self, lat, lng, days_back=10):
+    async def get_ndvi(self, lat, lng, days_back=10):
         """
-        Get OLCI Global Vegetation Index (OGVI) — similar to NDVI
-        and OTCI (Terrestrial Chlorophyll Index)
+        Get NDVI from Sentinel-3 OLCI L1
+        Oa08=665nm (Red), Oa17=865nm (NIR)
         300m resolution, 2-day revisit
         """
         import aiohttp
@@ -48,43 +49,41 @@ class Sentinel3Extractor:
             date_from = (today - datetime.timedelta(days=days_back)).strftime("%Y-%m-%dT00:00:00Z")
             date_to = today.strftime("%Y-%m-%dT23:59:59Z")
 
-            # Bounding box around point (300m buffer)
-            pad = 0.005  # ~500m
+            pad = 0.01  # ~1km buffer for 300m pixels
             bbox = [lng-pad, lat-pad, lng+pad, lat+pad]
 
             payload = {
                 "input": {
                     "bounds": {"bbox": bbox},
                     "data": [{
-                        "type": "sentinel-3-olci-l2",
+                        "type": "sentinel-3-olci",
                         "dataFilter": {
                             "timeRange": {
                                 "from": date_from,
                                 "to": date_to
-                            },
-                            "maxCloudCoverage": 50
+                            }
                         }
                     }]
                 },
                 "output": {
-                    "width": 5,
-                    "height": 5,
-                    "responses": [{"identifier": "default", "format": {"type": "image/tiff"}}]
+                    "width": 7,
+                    "height": 7,
+                    "responses": [{"identifier": "default", 
+                                   "format": {"type": "image/tiff"}}]
                 },
                 "evalscript": """//VERSION=3
 function setup() {
   return {
-    input: [{bands: ["OGVI", "OTCI", "dataMask"]}],
+    input: [{bands: ["Oa08_radiance", "Oa17_radiance", "dataMask"]}],
     output: {bands: 3, sampleType: "FLOAT32"}
   };
 }
 function evaluatePixel(s) {
-  if (s.dataMask === 0) return [-9999, -9999, -9999, 0];
-  // GIFAPAR = Green FAPAR (similar to NDVI, 0-1)
-  // OTCI = Terrestrial Chlorophyll Index
-  // RC681/RC865 = rectified reflectance for NDVI calc
-  var ndvi = (s.RC865 - s.RC681) / (s.RC865 + s.RC681 + 0.0001);
-  return [s.GIFAPAR, s.OTCI, ndvi, s.dataMask];
+  if (s.dataMask === 0) return [-1, -1, 0];
+  var red = s.Oa08_radiance;
+  var nir = s.Oa17_radiance;
+  var ndvi = (nir - red) / (nir + red + 0.0001);
+  return [red, nir, ndvi];
 }"""
             }
 
@@ -93,55 +92,61 @@ function evaluatePixel(s) {
                     "Authorization": f"Bearer {token}",
                     "Content-Type": "application/json"
                 }
-                async with session.post(PROCESS_URL, json=payload, headers=headers) as r:
+                async with session.post(PROCESS_URL, json=payload, 
+                                        headers=headers) as r:
                     if r.status != 200:
                         error = await r.text()
-                        return {"available": False, "error": f"HTTP {r.status}: {error[:200]}"}
+                        return {"available": False, 
+                                "error": f"HTTP {r.status}: {error[:200]}"}
 
-                    # Parse tiff response
-                    import io
-                    content = await r.read()
+                    content_bytes = await r.read()
                     
                     try:
                         import tifffile
-                        arr = tifffile.imread(io.BytesIO(content))
-                    except:
-                        return {"available": False, "error": "Could not parse TIFF"}
+                        arr = tifffile.imread(io.BytesIO(content_bytes))
+                    except Exception as e:
+                        return {"available": False, 
+                                "error": f"TIFF parse error: {str(e)}"}
 
-                    # arr shape: (height, width, bands) or (bands, height, width)
                     if arr.ndim == 3:
-                        if arr.shape[0] == 4:
-                            gifapar_band = arr[0]
-                            otci_band = arr[1]
+                        if arr.shape[0] == 3:
+                            red_band = arr[0]
+                            nir_band = arr[1]
                             ndvi_band = arr[2]
-                            mask_band = arr[3]
                         else:
-                            gifapar_band = arr[:,:,0]
-                            otci_band = arr[:,:,1]
+                            red_band = arr[:,:,0]
+                            nir_band = arr[:,:,1]
                             ndvi_band = arr[:,:,2]
-                            mask_band = arr[:,:,3]
                     else:
-                        return {"available": False, "error": "Unexpected array shape"}
+                        return {"available": False, 
+                                "error": f"Unexpected shape: {arr.shape}"}
 
-                    # Filter valid pixels
-                    valid = (mask_band > 0) & (gifapar_band > -9000) & (gifapar_band >= 0) & (gifapar_band <= 1)
+                    valid = (red_band > 0) & (nir_band > 0) & (ndvi_band > -1)
                     
                     if not np.any(valid):
                         return {"available": False, "error": "No valid pixels"}
 
-                    gifapar_mean = float(np.mean(gifapar_band[valid]))
-                    otci_mean = float(np.mean(otci_band[valid])) if np.any(valid) else None
-                    ndvi_mean = float(np.mean(ndvi_band[valid])) if np.any(valid) else None
+                    red_mean = float(np.mean(red_band[valid]))
+                    nir_mean = float(np.mean(nir_band[valid]))
+                    ndvi_raw = float(np.mean(ndvi_band[valid]))
+
+                    # Dark object subtraction correction
+                    red_min = float(np.percentile(red_band[valid], 2))
+                    nir_min = float(np.percentile(nir_band[valid], 2))
+                    red_cor = max(0.001, red_mean - red_min)
+                    nir_cor = max(0.001, nir_mean - nir_min)
+                    ndvi_corrected = (nir_cor - red_cor) / (nir_cor + red_cor)
 
                     return {
                         "available": True,
-                        "gifapar": round(gifapar_mean, 4),
-                        "ndvi_s3": round(ndvi_mean, 4) if ndvi_mean else None,
-                        "otci": round(otci_mean, 4) if otci_mean else None,
+                        "ndvi_raw": round(ndvi_raw, 4),
+                        "ndvi_corrected": round(ndvi_corrected, 4),
+                        "red_radiance": round(red_mean, 2),
+                        "nir_radiance": round(nir_mean, 2),
                         "pixel_count": int(np.sum(valid)),
-                        "date_from": date_from,
-                        "date_to": date_to,
-                        "note": "OGVI: OLCI Global Vegetation Index (300m, 2-day revisit)"
+                        "resolution_m": 300,
+                        "revisit_days": 2,
+                        "note": "S3 OLCI L1 · Oa08=665nm · Oa17=865nm · DOS corrected"
                     }
 
         except Exception as e:
