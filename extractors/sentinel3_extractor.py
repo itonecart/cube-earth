@@ -79,8 +79,12 @@ function setup() {
   };
 }
 function evaluatePixel(s) {
-  if (s.dataMask === 0) return [-9999, -9999, 0];
-  return [s.OGVI, s.OTCI, s.dataMask];
+  if (s.dataMask === 0) return [-9999, -9999, -9999, 0];
+  // GIFAPAR = Green FAPAR (similar to NDVI, 0-1)
+  // OTCI = Terrestrial Chlorophyll Index
+  // RC681/RC865 = rectified reflectance for NDVI calc
+  var ndvi = (s.RC865 - s.RC681) / (s.RC865 + s.RC681 + 0.0001);
+  return [s.GIFAPAR, s.OTCI, ndvi, s.dataMask];
 }"""
             }
 
@@ -106,29 +110,33 @@ function evaluatePixel(s) {
 
                     # arr shape: (height, width, bands) or (bands, height, width)
                     if arr.ndim == 3:
-                        if arr.shape[0] == 3:
-                            ogvi_band = arr[0]
+                        if arr.shape[0] == 4:
+                            gifapar_band = arr[0]
                             otci_band = arr[1]
-                            mask_band = arr[2]
+                            ndvi_band = arr[2]
+                            mask_band = arr[3]
                         else:
-                            ogvi_band = arr[:,:,0]
+                            gifapar_band = arr[:,:,0]
                             otci_band = arr[:,:,1]
-                            mask_band = arr[:,:,2]
+                            ndvi_band = arr[:,:,2]
+                            mask_band = arr[:,:,3]
                     else:
                         return {"available": False, "error": "Unexpected array shape"}
 
                     # Filter valid pixels
-                    valid = (mask_band > 0) & (ogvi_band > -9000) & (ogvi_band >= 0) & (ogvi_band <= 1)
+                    valid = (mask_band > 0) & (gifapar_band > -9000) & (gifapar_band >= 0) & (gifapar_band <= 1)
                     
                     if not np.any(valid):
                         return {"available": False, "error": "No valid pixels"}
 
-                    ogvi_mean = float(np.mean(ogvi_band[valid]))
+                    gifapar_mean = float(np.mean(gifapar_band[valid]))
                     otci_mean = float(np.mean(otci_band[valid])) if np.any(valid) else None
+                    ndvi_mean = float(np.mean(ndvi_band[valid])) if np.any(valid) else None
 
                     return {
                         "available": True,
-                        "ogvi": round(ogvi_mean, 4),
+                        "gifapar": round(gifapar_mean, 4),
+                        "ndvi_s3": round(ndvi_mean, 4) if ndvi_mean else None,
                         "otci": round(otci_mean, 4) if otci_mean else None,
                         "pixel_count": int(np.sum(valid)),
                         "date_from": date_from,
