@@ -149,7 +149,7 @@ function evaluatePixel(s) {
                         "pixel_count": int(np.sum(valid)),
                         "resolution_m": 300,
                         "revisit_days": 2,
-                        "note": "S3 OLCI L1 · Oa08=665nm · Oa17=865nm · DOS corrected"
+                        "note": "S3 OLCI L1 · B08=665nm Red · B17=865nm NIR · reflectance approximation"
                     }
 
         except Exception as e:
