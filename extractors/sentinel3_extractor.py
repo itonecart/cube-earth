@@ -138,7 +138,6 @@ function evaluatePixel(s) {
                         "revisit_days": 2,
                         "note": "S3 OLCI L1 B08=665nm B17=865nm"
                     }
-                        "available": True,
 
         except Exception as e:
             return {"available": False, "error": str(e)}
