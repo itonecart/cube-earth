@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, Request
+import gc
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from backend.bootstrap import Bootstrap
@@ -252,10 +253,12 @@ async def field_profile(req: ProfileRequest):
         # Slurry planner
         slurry = calculate_slurry_window(weather, smap_val)
 
-        return {"success": True,
+        response = {"success": True,
                 "nitrogen": n_plan,
                 "slurry": slurry,
                 **result}
+        gc.collect()  # Free numpy arrays
+        return response
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
