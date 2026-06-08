@@ -7,10 +7,10 @@ class FieldProfileService:
         self.builder = ProfileBuilder()
 
     async def build_profile(self, lat, lng, year, parcel_override=None):
-        if not (51.3 <= lat <= 55.4):
-            raise ValueError(f"Latitude {lat} outside Ireland")
-        if not (-10.5 <= lng <= -6.0):
-            raise ValueError(f"Longitude {lng} outside Ireland")
+        if not (-90 <= lat <= 90):
+            raise ValueError(f"Invalid latitude {lat}")
+        if not (-180 <= lng <= 180):
+            raise ValueError(f"Invalid longitude {lng}")
         return await self.builder.build(lat, lng, year, parcel_override=parcel_override)
 
 
