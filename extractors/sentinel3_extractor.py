@@ -80,8 +80,11 @@ function setup() {
 }
 function evaluatePixel(s) {
   if (s.dataMask === 0) return [-1, -1, 0];
-  var red = s.B08;
-  var nir = s.B17;
+  // Convert radiance to approximate reflectance
+  // Solar irradiance at B08(665nm) ~ 1749, B17(865nm) ~ 955 W/m2/um
+  // rho = pi * L / (E0 * cos(sza)) — simplified without SZA
+  var red = s.B08 / 1749.0;
+  var nir = s.B17 / 955.0;
   var ndvi = (nir - red) / (nir + red + 0.0001);
   return [red, nir, ndvi];
 }"""
