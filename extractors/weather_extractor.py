@@ -42,6 +42,7 @@ def get_weather_data(lat, lng):
         temps_max = daily.get("temperature_2m_max", [])
         temps_min = daily.get("temperature_2m_min", [])
         radiation = daily.get("shortwave_radiation_sum", [])
+        et0 = daily.get("et0_fao_evapotranspiration", [])
         rain = daily.get("precipitation_sum", [])
         times = daily.get("time", [])
 
@@ -64,6 +65,7 @@ def get_weather_data(lat, lng):
                 "temp_min": temps_min[i] if i < len(temps_min) else None,
                 "rain_mm": rain[i] if i < len(rain) else None,
                 "radiation_mj": radiation[i] if i < len(radiation) else None,
+                "et0_mm": et0[i] if i < len(et0) else None,
             })
 
         # Growth score
