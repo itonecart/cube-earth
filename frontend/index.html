@@ -408,7 +408,10 @@ function renderProfile(d, cgmData) {
           ${(v.because||[]).map(b=>`<li>${b}</li>`).join('')}
         </ul>
       </div>`).join('')}
-  </div>`;
+  </div>
+
+  ${cropIntelHTML}
+  `;
 }
 
 function showError(msg) {
