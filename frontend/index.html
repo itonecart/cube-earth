@@ -197,17 +197,28 @@ function scanCoords() {
 }
 
 // ── SCAN ──
+const CGM_URL = 'https://crop-trajectory.onrender.com';
+
 async function scanField(lat, lng) {
   const year = new Date().getFullYear();
   showLoading();
   try {
-    const res = await fetch(`${API_URL}/field_profile`, {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ lat, lng, year }),
-    });
+    // Fetch field profile and crop intelligence in parallel
+    const [res, cgmRes] = await Promise.all([
+      fetch(`${API_URL}/field_profile`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ lat, lng, year }),
+      }),
+      fetch(`${CGM_URL}/parcel_intelligence`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({ lat, lng }),
+      }).catch(() => null)
+    ]);
     const data = await res.json();
-    if (data.success) renderProfile(data);
+    const cgmData = cgmRes ? await cgmRes.json().catch(() => null) : null;
+    if (data.success) renderProfile(data, cgmData);
     else showError(data.detail || 'API error');
   } catch(err) {
     showError(err.message);
@@ -218,6 +229,7 @@ async function scanField(lat, lng) {
 let stepInterval = null;
 function showLoading() {
   document.getElementById('scan-btn').disabled = true;
+  const cropIntelHTML = renderCropIntelligence(cgmData);
   document.getElementById('content').innerHTML = `
     <div class="loading">
       <div class="spinner"></div>
@@ -249,7 +261,48 @@ function scoreColor(label) {
   return '';
 }
 
-function renderProfile(d) {
+function renderCropIntelligence(cgm) {
+  if (!cgm || !cgm.crop_intelligence) return '';
+  const fa = cgm.crop_intelligence.field_analysis || {};
+  const gm = cgm.crop_intelligence.growth_model || {};
+  const parcel = cgm.parcel || {};
+  const alerts = fa.management_alerts || [];
+
+  return `
+  <div class="section" style="border-top:2px solid var(--accent);margin-top:8px">
+    <div class="section-label" style="color:var(--accent)">🌱 Crop Intelligence</div>
+    <div class="parcel-name">${fa.crop_type || 'Unknown'}</div>
+    <div class="parcel-meta">
+      ${parcel.area_ha ? parcel.area_ha + ' ha · ' : ''}
+      ${fa.current_stage || ''} · 
+      ${fa.classification_confidence || 0}% confidence
+    </div>
+    ${fa.current_stage ? `
+    <div style="margin-top:8px;font-size:12px;color:var(--muted)">
+      <strong>Stage:</strong> ${fa.current_stage}
+    </div>` : ''}
+    ${gm.system === 'grassland' ? `
+    <div style="margin-top:4px;font-size:12px;color:var(--muted)">
+      <strong>RVI:</strong> ${gm.rvi_current || '—'} · 
+      <strong>Cover:</strong> ${gm.grazing_cover || '—'}
+    </div>` : ''}
+    ${fa.yield_estimate_tha ? `
+    <div style="margin-top:4px;font-size:12px;color:var(--muted)">
+      <strong>Yield estimate:</strong> ${fa.yield_estimate_tha} t/ha
+    </div>` : ''}
+    ${alerts.length > 0 ? `
+    <div style="margin-top:8px">
+      ${alerts.map(a => `
+        <div style="font-size:11px;color:var(--accent);margin-top:3px">⚠ ${a}</div>
+      `).join('')}
+    </div>` : ''}
+    <div style="font-size:10px;color:var(--muted);margin-top:6px">
+      Source: ${fa.crop_source || 'SAR classifier'}
+    </div>
+  </div>`;
+}
+
+function renderProfile(d, cgmData) {
   if (stepInterval) clearInterval(stepInterval);
   document.getElementById('scan-btn').disabled = false;
   const c=d.confidence, v=d.vegetation, sm=d.soil_moisture,
