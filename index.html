@@ -203,23 +203,29 @@ async function scanField(lat, lng) {
   const year = new Date().getFullYear();
   showLoading();
   try {
-    // Fetch field profile and crop intelligence in parallel
-    const [res, cgmRes] = await Promise.all([
-      fetch(`${API_URL}/field_profile`, {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({ lat, lng, year }),
-      }),
+    // Fetch field profile first — fast
+    const res = await fetch(`${API_URL}/field_profile`, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ lat, lng, year }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      renderProfile(data, null);
+      // Then fetch crop intelligence in background
       fetch(`${CGM_URL}/parcel_intelligence`, {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         body:JSON.stringify({ lat, lng }),
-      }).catch(() => null)
-    ]);
-    const data = await res.json();
-    const cgmData = cgmRes ? await cgmRes.json().catch(() => null) : null;
-    if (data.success) renderProfile(data, cgmData);
-    else showError(data.detail || 'API error');
+      }).then(r => r.json()).then(cgmData => {
+        const cropSection = document.getElementById('crop-intel-section');
+        if (cropSection) {
+          cropSection.innerHTML = renderCropIntelligence(cgmData);
+        }
+      }).catch(() => null);
+    } else {
+      showError(data.detail || 'API error');
+    }
   } catch(err) {
     showError(err.message);
   }
@@ -307,8 +313,6 @@ function renderProfile(d, cgmData) {
   const c=d.confidence, v=d.vegetation, sm=d.soil_moisture,
         s=d.sar, a=d.agreement, e=d.explainability,
         f=d.freshness, ag=d.agronomic, p=d.parcel, te=d.terrain;
-  const cropIntelHTML = renderCropIntelligence(cgmData);
-
   document.getElementById('content').innerHTML = `
 
   <div class="section">
@@ -410,7 +414,11 @@ function renderProfile(d, cgmData) {
       </div>`).join('')}
   </div>
 
-  ${cropIntelHTML}
+  <div id="crop-intel-section">
+    <div class="section" style="opacity:0.5;font-size:12px;color:var(--muted);text-align:center;padding:12px">
+      🌱 Loading crop intelligence...
+    </div>
+  </div>
   `;
 }
 
