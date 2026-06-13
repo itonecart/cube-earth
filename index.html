@@ -229,7 +229,6 @@ async function scanField(lat, lng) {
 let stepInterval = null;
 function showLoading() {
   document.getElementById('scan-btn').disabled = true;
-  const cropIntelHTML = renderCropIntelligence(cgmData);
   document.getElementById('content').innerHTML = `
     <div class="loading">
       <div class="spinner"></div>
@@ -308,6 +307,7 @@ function renderProfile(d, cgmData) {
   const c=d.confidence, v=d.vegetation, sm=d.soil_moisture,
         s=d.sar, a=d.agreement, e=d.explainability,
         f=d.freshness, ag=d.agronomic, p=d.parcel, te=d.terrain;
+  const cropIntelHTML = renderCropIntelligence(cgmData);
 
   document.getElementById('content').innerHTML = `
 
